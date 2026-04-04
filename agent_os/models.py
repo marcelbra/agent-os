@@ -1,0 +1,76 @@
+from __future__ import annotations
+
+from enum import StrEnum
+
+from pydantic import BaseModel
+
+
+class TaskStatus(StrEnum):
+    TODO = "todo"
+    IN_PROGRESS = "in_progress"
+    WAITING = "waiting"
+    DONE = "done"
+    CANCELLED = "cancelled"
+
+
+class MilestoneStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class PMS(BaseModel):
+    id: str = "pms"
+    title: str
+    content: str = ""
+
+
+class Role(BaseModel):
+    id: str
+    name: str
+    emoji: str
+    title: str
+    content: str = ""
+
+
+class Milestone(BaseModel):
+    id: str
+    title: str
+    role: str
+    start_date: str = ""
+    end_date: str = ""
+    status: MilestoneStatus = MilestoneStatus.ACTIVE
+    description: str = ""
+
+
+class Task(BaseModel):
+    id: str
+    title: str
+    status: TaskStatus = TaskStatus.TODO
+    milestone: str | None = None
+    labels: list[str] = []
+    dependencies: list[str] = []
+    created_date: str = ""
+    description: str = ""
+
+
+class Note(BaseModel):
+    id: str
+    title: str
+    date: str = ""
+    scanned: bool = False
+    content: str = ""
+
+
+class ParseError(BaseModel):
+    file: str
+    error: str
+
+
+class ProjectState(BaseModel):
+    pms: PMS | None = None
+    roles: list[Role] = []
+    milestones: list[Milestone] = []
+    tasks: list[Task] = []
+    notes: list[Note] = []
+    errors: list[ParseError] = []

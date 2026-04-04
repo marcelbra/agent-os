@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from typing import cast
+
+from agent_os.models import PMS, Milestone, Note, Role, Task
+
+
+def to_md(item: PMS | Role | Milestone | Task | Note, kind: str) -> str:
+    match kind:
+        case "pms":
+            pms = cast(PMS, item)
+            return f"# {pms.title}\n\n{pms.content}"
+        case "role":
+            role = cast(Role, item)
+            return f"# {role.emoji} {role.name}\n\n*{role.title}*\n\n---\n\n{role.content}"
+        case "milestone":
+            ms = cast(Milestone, item)
+            return (
+                f"# {ms.title}\n\n"
+                f"| | |\n|:--|:--|\n"
+                f"| id | `{ms.id}` |\n"
+                f"| role | {ms.role} |\n"
+                f"| start | {ms.start_date} |\n"
+                f"| end | {ms.end_date} |\n"
+                f"| status | **{ms.status}** |\n\n"
+                f"---\n\n{ms.description}"
+            )
+        case "task":
+            task = cast(Task, item)
+            labels = ", ".join(task.labels) if task.labels else "—"
+            deps = ", ".join(task.dependencies) if task.dependencies else "—"
+            return (
+                f"# {task.title}\n\n"
+                f"| | |\n|:--|:--|\n"
+                f"| id | `{task.id}` |\n"
+                f"| status | **{task.status}** |\n"
+                f"| milestone | {task.milestone or '—'} |\n"
+                f"| labels | {labels} |\n"
+                f"| depends | {deps} |\n"
+                f"| created | {task.created_date} |\n\n"
+                f"---\n\n{task.description}"
+            )
+        case "note":
+            note = cast(Note, item)
+            scanned = "yes ✓" if note.scanned else "**no ●**"
+            return (
+                f"# {note.title}\n\n"
+                f"| | |\n|:--|:--|\n"
+                f"| id | `{note.id}` |\n"
+                f"| date | {note.date} |\n"
+                f"| scanned | {scanned} |\n\n"
+                f"---\n\n{note.content}"
+            )
+    return ""

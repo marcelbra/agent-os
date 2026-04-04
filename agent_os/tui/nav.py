@@ -1,0 +1,18 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+_TREE_WIDTH = 30
+_LABEL_MAX = 22
+
+
+def _t(s: str) -> str:
+    """Truncate a tree label to prevent horizontal overflow."""
+    return s if len(s) <= _LABEL_MAX else s[: _LABEL_MAX - 1] + "…"
+
+
+@dataclass
+class Nav:
+    kind: str  # pms | role | milestone | task | note | section | agent | skill
+    id: str
+    section: str  # context | milestones | tasks | notes | skills | ""
