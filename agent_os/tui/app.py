@@ -65,12 +65,17 @@ class AgentOSApp(App[None]):
 
     def _populate_tree(self) -> None:
         tree = self.query_one("#nav", NavTree)
+        expanded = {
+            node.data.section
+            for node in tree.root.children
+            if isinstance(node.data, Nav) and node.is_expanded
+        }
         tree.clear()
         s = self.state
         if not s:
             return
 
-        ctx = tree.root.add("Context", data=Nav("section", "", "context"), expand=False)
+        ctx = tree.root.add("Context", data=Nav("section", "", "context"), expand="context" in expanded)
         if s.pms:
             ctx.add_leaf(_t("Personal Mission Statement"), data=Nav("pms", "pms", "context"))
         for r in s.roles:
@@ -78,23 +83,23 @@ class AgentOSApp(App[None]):
             ctx.add_leaf(_t(f"{emoji} {r.name}"), data=Nav("role", r.id, "context"))
 
         _ms_icon = {"active": "•", "completed": "✓", "cancelled": "✗"}
-        ms_node = tree.root.add("Milestones", data=Nav("section", "", "milestones"), expand=False)
+        ms_node = tree.root.add("Milestones", data=Nav("section", "", "milestones"), expand="milestones" in expanded)
         for m in s.milestones:
             ms_node.add_leaf(_t(f"{_ms_icon.get(m.status, '•')} {m.title}"), data=Nav("milestone", m.id, "milestones"))
 
         _task_icon = {"todo": "•", "in_progress": "▶", "waiting": "…", "done": "✓", "cancelled": "✗"}
-        tasks_node = tree.root.add("Tasks", data=Nav("section", "", "tasks"), expand=False)
+        tasks_node = tree.root.add("Tasks", data=Nav("section", "", "tasks"), expand="tasks" in expanded)
         for t in s.tasks:
             tasks_node.add_leaf(_t(f"{_task_icon.get(t.status, '•')} {t.title}"), data=Nav("task", t.id, "tasks"))
 
-        notes_node = tree.root.add("Notes", data=Nav("section", "", "notes"), expand=False)
+        notes_node = tree.root.add("Notes", data=Nav("section", "", "notes"), expand="notes" in expanded)
         for n in s.notes:
             icon = "•" if not n.scanned else "·"
             notes_node.add_leaf(_t(f"{icon} {n.title}"), data=Nav("note", n.id, "notes"))
 
         skills_dir = self.root / "skills"
         if skills_dir.exists():
-            skills_node = tree.root.add("Skills", data=Nav("section", "", "skills"), expand=False)
+            skills_node = tree.root.add("Skills", data=Nav("section", "", "skills"), expand="skills" in expanded)
             for p in sorted(skills_dir.glob("*.md")):
                 skills_node.add_leaf(_t(p.stem), data=Nav("skill", p.stem, "skills"))
 
@@ -250,6 +255,12 @@ class AgentOSApp(App[None]):
 
     def _expand_and_focus_nav(self, nav: Nav) -> None:
         tree = self.query_one("#nav", NavTree)
+        if nav.kind == "section":
+            for section in tree.root.children:
+                if isinstance(section.data, Nav) and section.data.section == nav.section:
+                    self.call_after_refresh(lambda n=section: tree.move_cursor(n))
+                    return
+            return
         for section in tree.root.children:
             for leaf in section.children:
                 if isinstance(leaf.data, Nav) and leaf.data.id == nav.id and leaf.data.kind == nav.kind:
@@ -310,20 +321,21 @@ class AgentOSApp(App[None]):
         name = getattr(item, "title", None) or getattr(item, "name", None) or nav.id
 
         tree = self.query_one("#nav", NavTree)
-        leaves = [
+        section_leaves = [
             leaf.data
             for section in tree.root.children
             for leaf in section.children
-            if isinstance(leaf.data, Nav) and leaf.data.kind in ("role", "milestone", "task", "note")
+            if isinstance(leaf.data, Nav)
+            and leaf.data.kind in ("role", "milestone", "task", "note")
+            and leaf.data.section == nav.section
         ]
-        idx = next((i for i, n in enumerate(leaves) if n.id == nav.id and n.kind == nav.kind), None)
-        next_nav = (
-            leaves[idx + 1]
-            if idx is not None and idx + 1 < len(leaves)
-            else leaves[idx - 1]
-            if idx is not None and idx > 0
-            else None
-        )
+        idx = next((i for i, n in enumerate(section_leaves) if n.id == nav.id), None)
+        if idx is not None and len(section_leaves) > 1:
+            next_nav: Nav = (
+                section_leaves[idx + 1] if idx + 1 < len(section_leaves) else section_leaves[idx - 1]
+            )
+        else:
+            next_nav = Nav("section", "", nav.section)
 
         self._confirm_and_delete(nav, name, next_nav)
 
@@ -342,12 +354,13 @@ class AgentOSApp(App[None]):
             case "note":
                 deleted = parser.delete_note(self.root, nav.id)
         if deleted:
-            self.selected = next_nav
+            self.selected = next_nav if next_nav and next_nav.kind != "section" else None
             self._reload()
             self.notify("Deleted", severity="warning", timeout=2)
             if next_nav:
                 self._expand_and_focus_nav(next_nav)
-                self._show_view()
+                if next_nav.kind != "section":
+                    self._show_view()
 
     # ── Misc ──────────────────────────────────────────────────────────────────
 
