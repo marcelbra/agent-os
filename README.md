@@ -1,45 +1,72 @@
 ![agent-os banner](banner.png)
 
-A personal life OS that lives in your terminal. Markdown files as the database, a keyboard-driven TUI as the interface, and Claude as the AI co-pilot.
+A lightweight context layer for human-AI co-working. Plain markdown files your agent can read and edit directly — a keyboard-driven TUI so you can navigate and update everything yourself.
 
 ## What it is
 
-agent-os organizes your life across five areas — Context, Milestones, Tasks, Notes, and Skills — all backed by plain markdown files with YAML frontmatter. No database, no sync, no lock-in.
+agent-os is built around one idea: **your agent needs context, and you need visibility into what it's doing.**
 
-The TUI lets you browse, edit, and create everything from the keyboard. `AGENT.md` defines how your AI agent operates — it ships with the repo and is fully editable from within the TUI.
+Everything lives in `agent_os/content/` as plain markdown files with YAML frontmatter. No database, no sync service, no lock-in. Your agent reads and writes files directly. You use the TUI to review, edit, and stay in sync.
 
-## Structure
+The workflow is simple: you and your agent work through milestones and tasks together. The agent reads your current state, picks up where things left off, and works directly inside task directories. You check in via the TUI or by running a skill like `/check-in` or `/weekly-review`.
+
+## Content layer
 
 ```
-context/          # Personal Mission Statement + Roles
-milestones/       # Long-horizon goals
-tasks/            # Actionable items (each task is a directory)
-notes/            # Logs, reflections, anything else
-skills/           # Agent skill definitions (markdown)
-AGENT.md          # AI co-pilot driver file
+agent_os/content/
+├── AGENT.md              # How your agent should operate — instructions, preferences, context
+├── milestones/           # Long-horizon goals, each a markdown file
+├── tasks/                # Actionable items — each task is a directory the agent works in
+├── notes/                # Logs, reflections, observations, raw capture
+└── skills/               # Slash-command prompts your agent can run (e.g. /check-in)
 ```
+
+**Tasks as working directories.** Each task lives in its own folder (`tasks/task-1-slug/`). The agent writes its work — notes, drafts, outputs — directly into that directory alongside `description.md`. Nothing is hidden in a database.
+
+**Skills.** Skills are markdown files that define reusable agent workflows. `/check-in` surfaces today's priorities, `/scan-notes` processes unread notes, `/weekly-review` does what it says. You can edit, create, and delete skills from the TUI.
+
+**AGENT.md.** The top-level driver file for your agent. Define its persona, working style, and any persistent context that should always be in scope. Editable directly from the TUI.
 
 ## Install
 
 ```bash
 uv sync
-uv run agent-os
+make run
 ```
 
 Requires Python 3.13+.
 
-## Keybindings
+## TUI
+
+The TUI gives you a keyboard-driven view into your content layer.
+
+```
+┌─────────────────┬────────────────────────────────────┐
+│  AGENT.md       │                                    │
+│  Milestones     │   Content panel                    │
+│    milestone-1  │   (view / edit / structured form)  │
+│  Tasks          │                                    │
+│    task-1       │                                    │
+│  Notes          │                                    │
+│  Skills         │                                    │
+└─────────────────┴────────────────────────────────────┘
+```
 
 | Key | Action |
 |-----|--------|
 | `↑` / `↓` | Navigate tree |
-| `→` | Expand / enter section |
-| `←` | Collapse / go to parent |
-| `Enter` | Open item |
-| `←` (in editor) | Return to tree (auto-saves) |
-| `n` | New item |
+| `→` | Expand section / enter edit |
+| `←` | Collapse / exit editor (auto-saves) |
+| `n` | New item in current section |
 | `d` | Delete item |
-| `r` | Refresh |
+| `r` | Refresh from disk |
+
+Structured items (tasks, milestones, notes) open as forms — status, dates, labels, milestone links. AGENT.md and skills open as a raw markdown editor with syntax highlighting.
+
+## Coming soon
+
+- **MCP integrations** — Google Calendar and Gmail wired in so your agent can cross-reference your schedule and inbox during `/check-in` and `/weekly-review`
+- **CLI** — a command-line interface so your agent can create, update, and query content without touching files directly
 
 ## Tech
 
