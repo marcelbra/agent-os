@@ -13,6 +13,7 @@ from textual.widgets import Footer, Header, Markdown
 
 from agent_os import parser
 from agent_os.models import PMS, Milestone, Note, ProjectState, Role, Task
+from agent_os.tui.confirm_delete import ConfirmDeleteScreen
 from agent_os.tui.nav import Nav, _t
 from agent_os.tui.render import to_md
 from agent_os.tui.styles import CSS as APP_CSS
@@ -293,6 +294,31 @@ class AgentOSApp(App[None]):
         if self.in_detail or not self.selected or self.selected.kind in ("section", "pms", "agent", "skill"):
             return
         nav = self.selected
+        item = self._item()
+        name = getattr(item, "title", None) or getattr(item, "name", None) or nav.id
+
+        tree = self.query_one("#nav", NavTree)
+        leaves = [
+            leaf.data
+            for section in tree.root.children
+            for leaf in section.children
+            if isinstance(leaf.data, Nav) and leaf.data.kind in ("role", "milestone", "task", "note")
+        ]
+        idx = next((i for i, n in enumerate(leaves) if n.id == nav.id and n.kind == nav.kind), None)
+        next_nav = (
+            leaves[idx + 1]
+            if idx is not None and idx + 1 < len(leaves)
+            else leaves[idx - 1]
+            if idx is not None and idx > 0
+            else None
+        )
+
+        self._confirm_and_delete(nav, name, next_nav)
+
+    @work
+    async def _confirm_and_delete(self, nav: Nav, name: str, next_nav: Nav | None) -> None:
+        if not await self.push_screen_wait(ConfirmDeleteScreen(name)):
+            return
         deleted = False
         match nav.kind:
             case "role":
@@ -304,7 +330,7 @@ class AgentOSApp(App[None]):
             case "note":
                 deleted = parser.delete_note(self.root, nav.id)
         if deleted:
-            self.selected = None
+            self.selected = next_nav
             self._reload()
             self.notify("Deleted", severity="warning", timeout=2)
 
