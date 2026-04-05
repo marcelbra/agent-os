@@ -40,6 +40,20 @@ git checkout main && git pull origin main
 
 Split into distinct PRs when changes touch different concerns (e.g. a feature in one file and a bug fix in another, or code changes vs. docs/skills cleanup). Combine when changes are tightly coupled and make no sense apart.
 
+## Development Commands
+
+Use the Makefile for common tasks:
+
+| Command | Purpose |
+|---------|---------|
+| `make lint` | Check for linting errors |
+| `make fix` | Auto-fix linting errors |
+| `make format` | Format code |
+| `make run` | Start the TUI |
+| `make install` | Install dependencies |
+
+Always run `make lint` after making changes. Use `make fix` to auto-resolve import ordering and other fixable issues.
+
 ## Development Mode
 
 This project is in active development with no production users. **Never add backward-compatibility shims, migration layers, or legacy-format handling.** When a format or contract changes, update all affected files and callsites directly. This applies until explicitly stated otherwise.

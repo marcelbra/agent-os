@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import cast
 
 from textual import on, work
@@ -210,7 +211,8 @@ class AgentOSApp(App[None]):
             path = self._item_path()
             if not path or not path.exists():
                 return
-            content.enter_edit(path.read_text(encoding="utf-8"))
+            agent_doc = SimpleNamespace(content=path.read_text(encoding="utf-8"))
+            content.enter_structured_edit(agent_doc, "agent")
         else:
             item = self._item()
             if not item:

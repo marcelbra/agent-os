@@ -27,6 +27,7 @@ BODY_ATTR: dict[str, str] = {
     "task": "description",
     "note": "content",
     "skill": "content",
+    "agent": "content",
 }
 
 
