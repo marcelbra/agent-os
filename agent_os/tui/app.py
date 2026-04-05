@@ -165,7 +165,11 @@ class AgentOSApp(App[None]):
         content.remove_class("-view-struct")
         self._show_view()
         self._update_footer_hints(self.selected)
-        self.call_after_refresh(self.query_one(NavTree).focus)
+        tree = self.query_one(NavTree)
+        tree.populate(self.state, self.root)
+        tree.focus()
+        if self.selected:
+            tree.focus_nav(self.selected)
 
     # ── View / Edit ───────────────────────────────────────────────────────────
 

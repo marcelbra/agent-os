@@ -72,6 +72,9 @@ class FieldInput(Input):
             super().__init__()
             self.direction = direction  # -1 = up, +1 = down
 
+    def on_focus(self) -> None:
+        self.call_after_refresh(self.action_home)
+
     def on_key(self, event: Key) -> None:
         if event.key == "up":
             event.prevent_default()
