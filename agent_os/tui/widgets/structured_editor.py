@@ -12,6 +12,7 @@ from textual.widgets import Label, Rule
 
 from agent_os.models import ProjectState
 from agent_os.tui.widgets.body_text_area import BodyTextArea
+from agent_os.tui.widgets.calendar import CalendarWidget
 from agent_os.tui.widgets.config import (
     BODY_ATTR,
     DATE_FIELDS,
@@ -20,7 +21,6 @@ from agent_os.tui.widgets.config import (
     AppConfig,
     _read_config,
 )
-from agent_os.tui.widgets.calendar import CalendarWidget
 from agent_os.tui.widgets.date_field_input import DateFieldInput
 from agent_os.tui.widgets.field_input import FieldInput
 from agent_os.tui.widgets.select_input import SelectInput
@@ -50,7 +50,7 @@ class StructuredEditor(Widget):
                 else:
                     cls = DateFieldInput if attr_key in DATE_FIELDS else FieldInput
                     yield cls(id=f"se-inp-{attr_key}", disabled=readonly)
-        yield Rule(classes="se-sep")
+        yield Rule(classes="se-sep", id="se-sep")
         yield BodyTextArea("", id="se-body", language="markdown", theme="vscode_dark")
 
     def load(self, item: Any, kind: str) -> None:  # noqa: C901
@@ -96,6 +96,9 @@ class StructuredEditor(Widget):
                     widget.value = val  # type: ignore[union-attr]
                 else:
                     widget.value = val  # type: ignore[union-attr]
+
+        has_visible_fields = any(kind in kinds for _, _, kinds, _ in FIELD_DEFS)
+        self.query_one("#se-sep", Rule).display = has_visible_fields
 
         body_attr = BODY_ATTR.get(kind, "content")
         body = getattr(item, body_attr, "") or ""
@@ -215,6 +218,8 @@ class StructuredEditor(Widget):
         """Serialize current field values back to raw frontmatter format."""
         if not self._kind:
             return ""
+        if self._kind == "agent":
+            return self.query_one("#se-body", BodyTextArea).text
         meta: dict[str, Any] = {}
         for attr_key, _label, kinds, _readonly in FIELD_DEFS:
             if self._kind not in kinds:

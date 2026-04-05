@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from agent_os.tui.widgets.body_text_area import BodyTextArea
+from agent_os.tui.widgets.calendar import CalendarWidget
 from agent_os.tui.widgets.config import (
     BODY_ATTR,
     DATE_FIELDS,
@@ -10,7 +11,6 @@ from agent_os.tui.widgets.config import (
     _read_config,
 )
 from agent_os.tui.widgets.content_panel import ContentPanel
-from agent_os.tui.widgets.calendar import CalendarWidget
 from agent_os.tui.widgets.date_field_input import DateFieldInput
 from agent_os.tui.widgets.field_input import FieldInput
 from agent_os.tui.widgets.header import FixedHeader
