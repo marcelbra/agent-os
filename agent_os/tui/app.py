@@ -86,7 +86,7 @@ class AgentOSApp(App[None]):
         if not self.selected:
             return None
         if self.selected.kind == "agent":
-            return self.root / "content" / "AGENT.md"
+            return self.root / "agent_os" / "context" / "AGENT.md"
         return self.store.find_item_path(self.selected.kind, self.selected.id)
 
     def _update_footer_hints(self, nav: Nav | None) -> None:

@@ -119,7 +119,7 @@ class NavTree(Tree[Nav | None]):
             for s in state.skills:
                 skills.add_leaf(truncate_label(s.command), data=Nav("skill", s.id, "skills"))
 
-        if (root / "content" / "AGENT.md").exists():
+        if (root / "agent_os" / "context" / "AGENT.md").exists():
             self.root.add_leaf("AGENT.md", data=Nav("agent", "agent", ""))
 
     def focus_nav(self, nav: Nav) -> None:
