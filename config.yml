@@ -10,12 +10,3 @@ milestone_statuses:
   completed: "✓"
   cancelled: "✗"
 
-label:
-  - health
-  - jobs
-  - finances
-  - relationship
-  - family
-  - social
-  - life-ops
-  - system

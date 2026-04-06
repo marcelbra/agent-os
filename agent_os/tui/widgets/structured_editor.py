@@ -61,7 +61,7 @@ class StructuredEditor(Widget):
         self._kind = kind
 
         root = getattr(self.app, "root", None)
-        cfg = read_config(root) if root else AppConfig({}, {}, [])
+        cfg = read_config(root) if root else AppConfig({}, {})
         state: ProjectState | None = getattr(self.app, "state", None)
         milestone_ids = [m.id for m in state.milestones] if state else []
 
@@ -87,8 +87,6 @@ class StructuredEditor(Widget):
                         icons = cfg.task_statuses if kind == "task" else cfg.milestone_statuses
                         options: list[str] = list(icons.keys())
                         display = [f"{icons[s]} {s}" for s in options]
-                    elif attr_key == "label":
-                        options = cfg.label
                     elif attr_key == "milestone":
                         options = [""] + milestone_ids
                     else:  # scanned
