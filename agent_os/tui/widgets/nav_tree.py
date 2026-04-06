@@ -150,6 +150,12 @@ class NavTree(Tree[Nav | None]):
             icon = SCANNED_ICONS["true"] if n.scanned else SCANNED_ICONS["false"]
             notes.add_leaf(truncate_label(f"{icon} {n.title}"), data=Nav("note", n.id, "notes"))
 
+        docs = self.root.add(
+            "Context", data=Nav("section", "", "docs"), expand="docs" in expanded
+        )
+        for d in state.docs:
+            docs.add_leaf(truncate_label(f"• {d.title}"), data=Nav("doc", d.id, "docs"))
+
         if state.skills:
             skills = self.root.add(
                 "Skills",

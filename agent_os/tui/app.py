@@ -11,7 +11,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Footer, Tree
 
-from agent_os.backend.models import Milestone, Note, ProjectState, Role, Skill, Task
+from agent_os.backend.models import Doc, Milestone, Note, ProjectState, Role, Skill, Task
 from agent_os.backend.store import ProjectStore
 from agent_os.tui.confirm_delete import ConfirmDeleteScreen
 from agent_os.tui.nav import Nav
@@ -23,6 +23,7 @@ _SECTION_TO_KIND: dict[str, str] = {
     "milestones": "milestone",
     "tasks": "task",
     "notes": "note",
+    "docs": "doc",
     "skills": "skill",
 }
 
@@ -74,7 +75,7 @@ class AgentOSApp(App[None]):
                 timeout=4,
             )
 
-    def _item(self) -> Role | Milestone | Task | Note | Skill | None:
+    def _item(self) -> Role | Milestone | Task | Note | Doc | Skill | None:
         n = self.selected
         if not n or not self.state:
             return None
@@ -88,6 +89,8 @@ class AgentOSApp(App[None]):
                 return next((t for t in s.tasks if t.id == n.id), None)
             case "note":
                 return next((nt for nt in s.notes if nt.id == n.id), None)
+            case "doc":
+                return next((d for d in s.docs if d.id == n.id), None)
             case "skill":
                 return next((sk for sk in s.skills if sk.id == n.id), None)
             case _:
@@ -113,7 +116,8 @@ class AgentOSApp(App[None]):
 
         show_new = new_kind is not None
         show_subtask = not editing and nav is not None and nav.kind == "task"
-        show_delete = not editing and nav is not None and nav.kind in ("role", "milestone", "task", "note", "skill")
+        deletable = {"role", "milestone", "task", "note", "doc", "skill"}
+        show_delete = not editing and nav is not None and nav.kind in deletable
 
         hint_updates: list[tuple[str, str, bool, str | None]] = [
             ("n", "new_item", show_new, f"new {new_kind}" if new_kind else None),
@@ -270,7 +274,7 @@ class AgentOSApp(App[None]):
             section = nav.section if nav and nav.kind == "section" else "notes"
 
         today = date.today().isoformat()
-        new_item: Role | Milestone | Task | Note | Skill
+        new_item: Role | Milestone | Task | Note | Doc | Skill
         kind: str
 
         match section:
@@ -303,6 +307,13 @@ class AgentOSApp(App[None]):
                 )
                 self.store.tasks.save(new_item)
                 kind = "task"
+            case "docs":
+                new_item = Doc(
+                    id=self.store.docs.next_id(),
+                    title="New Document",
+                )
+                self.store.docs.save(new_item)
+                kind = "doc"
             case "skills":
                 new_item = Skill(
                     id=self.store.skills.next_id(),
@@ -393,20 +404,16 @@ class AgentOSApp(App[None]):
     ) -> None:
         if not await self.push_screen_wait(ConfirmDeleteScreen(name)):
             return
-        deleted = False
-        match nav.kind:
-            case "role":
-                deleted = self.store.roles.delete(nav.id)
-            case "milestone":
-                deleted = self.store.milestones.delete(nav.id)
-            case "task":
-                deleted = self.store.tasks.delete(nav.id)
-            case "note":
-                deleted = self.store.notes.delete(nav.id)
-            case "skill":
-                deleted = self.store.skills.delete(nav.id)
-            case _:
-                pass
+        store_map = {
+            "role": self.store.roles,
+            "milestone": self.store.milestones,
+            "task": self.store.tasks,
+            "note": self.store.notes,
+            "doc": self.store.docs,
+            "skill": self.store.skills,
+        }
+        store = store_map.get(nav.kind)
+        deleted = store.delete(nav.id) if store else False
         if deleted:
             self.selected = next_nav if next_nav and next_nav.kind != "section" else None
             self._reload()
