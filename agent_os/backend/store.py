@@ -147,11 +147,11 @@ class TaskStore:
                 tasks.append(Task(
                     id=str(meta["id"]),
                     title=str(meta["title"]),
+                    start_date=str(meta.get("start_date", "")),
+                    end_date=str(meta.get("end_date", "")),
                     status=meta.get("status", "todo"),
                     milestone=str(meta["milestone"]) if meta.get("milestone") else None,
-                    label=str(meta.get("label", "")),
                     dependencies=[str(d) for d in meta.get("dependencies", [])],
-                    created_date=str(meta.get("created_date", "")),
                     description=content,
                 ))
             except Exception as e:
@@ -173,9 +173,9 @@ class TaskStore:
         meta: dict[str, Any] = {
             "id": task.id,
             "title": task.title,
+            "start_date": task.start_date,
+            "end_date": task.end_date,
             "status": str(task.status),
-            "created_date": task.created_date,
-            "label": task.label,
             "dependencies": task.dependencies,
         }
         if task.milestone:

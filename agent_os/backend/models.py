@@ -31,11 +31,11 @@ class Milestone(BaseModel):
 class Task(BaseModel):
     id: str
     title: str
+    start_date: str = ""
+    end_date: str = ""
     status: TaskStatus = TaskStatus.TODO
     milestone: str | None = None
-    label: str = ""
     dependencies: list[str] = []
-    created_date: str = ""
     description: str = ""
 
 

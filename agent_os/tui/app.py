@@ -269,7 +269,7 @@ class AgentOSApp(App[None]):
                 new_item = Task(
                     id=self.store.tasks.next_id(),
                     title="New Task",
-                    created_date=today,
+                    start_date=today,
                 )
                 self.store.tasks.save(new_item)
                 kind = "task"
