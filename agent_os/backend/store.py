@@ -9,6 +9,7 @@ from typing import Any, Protocol
 import frontmatter
 
 from agent_os.backend.models import (
+    Doc,
     Milestone,
     Note,
     ParseError,
@@ -324,6 +325,24 @@ class NoteStore(FlatFileStore[Note]):
         return item.title
 
 
+class DocStore(FlatFileStore[Doc]):
+    def __init__(self, root: Path) -> None:
+        super().__init__(root, "context/docs", "doc")
+
+    def _parse(self, meta: dict[str, Any], content: str) -> Doc:
+        return Doc(
+            id=str(meta["id"]),
+            title=str(meta["title"]),
+            content=content,
+        )
+
+    def _to_meta_content(self, item: Doc) -> tuple[dict[str, Any], str]:
+        return {"id": item.id, "title": item.title}, item.content
+
+    def _file_slug(self, item: Doc) -> str:
+        return item.title
+
+
 class SkillStore(FlatFileStore[Skill]):
     def __init__(self, root: Path) -> None:
         super().__init__(root, "skills", "skill", label="agent_os/skills")
@@ -352,6 +371,7 @@ class ProjectStore:
         self.milestones = MilestoneStore(root)
         self.tasks = TaskStore(root)
         self.notes = NoteStore(root)
+        self.docs = DocStore(root)
         self.skills = SkillStore(root)
 
     def load(self) -> ProjectState:
@@ -359,13 +379,15 @@ class ProjectStore:
         milestones, ms_errs = self.milestones.load_all()
         tasks, task_errs = self.tasks.load_all()
         notes, note_errs = self.notes.load_all()
+        docs, doc_errs = self.docs.load_all()
         skills, skill_errs = self.skills.load_all()
-        errors = role_errs + ms_errs + task_errs + note_errs + skill_errs
+        errors = role_errs + ms_errs + task_errs + note_errs + doc_errs + skill_errs
         return ProjectState(
             roles=roles,
             milestones=milestones,
             tasks=tasks,
             notes=notes,
+            docs=docs,
             skills=skills,
             errors=errors,
         )
@@ -380,6 +402,8 @@ class ProjectStore:
                 return self.tasks.find_path(item_id)
             case "note":
                 return self.notes.find_path(item_id)
+            case "doc":
+                return self.docs.find_path(item_id)
             case "skill":
                 return self.skills.find_path(item_id)
             case _:
