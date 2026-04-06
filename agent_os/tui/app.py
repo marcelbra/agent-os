@@ -18,6 +18,14 @@ from agent_os.tui.nav import Nav
 from agent_os.tui.styles import CSS as APP_CSS
 from agent_os.tui.widgets import ContentPanel, DetailTextArea, FixedHeader, NavTree, SelectInput, StructuredEditor
 
+_SECTION_TO_KIND: dict[str, str] = {
+    "roles": "role",
+    "milestones": "milestone",
+    "tasks": "task",
+    "notes": "note",
+    "skills": "skill",
+}
+
 
 class AgentOSApp(App[None]):
     TITLE = "agent-os"
@@ -94,28 +102,32 @@ class AgentOSApp(App[None]):
 
     def _update_footer_hints(self, nav: Nav | None) -> None:
         content = self.query_one(ContentPanel)
-        show_new = (
-            not content.is_editing
-            and nav is not None
-            and (
-                nav.kind == "section"
-                and nav.section in ("roles", "milestones", "tasks", "notes", "skills")
-                or nav.kind in ("role", "milestone", "task", "note", "skill")
-            )
-        )
-        show_delete = (
-            not content.is_editing
-            and nav is not None
-            and nav.kind in ("role", "milestone", "task", "note", "skill")
-        )
-        for key, action, show in (
-            ("n", "new_item", show_new),
-            ("d", "delete_item", show_delete),
-        ):
+        editing = content.is_editing
+
+        new_kind: str | None = None
+        if not editing and nav is not None:
+            if nav.kind == "section" and nav.section in _SECTION_TO_KIND:
+                new_kind = _SECTION_TO_KIND[nav.section]
+            elif nav.kind in ("role", "milestone", "task", "note", "skill"):
+                new_kind = nav.kind
+
+        show_new = new_kind is not None
+        show_subtask = not editing and nav is not None and nav.kind == "task"
+        show_delete = not editing and nav is not None and nav.kind in ("role", "milestone", "task", "note", "skill")
+
+        hint_updates: list[tuple[str, str, bool, str | None]] = [
+            ("n", "new_item", show_new, f"new {new_kind}" if new_kind else None),
+            ("ctrl+n", "new_subtask", show_subtask, None),
+            ("d", "delete_item", show_delete, None),
+        ]
+        for key, action, show, desc in hint_updates:
             bindings = self._bindings.key_to_bindings.get(key, [])
             for i, b in enumerate(bindings):
                 if b.action == action:
-                    bindings[i] = replace(b, show=show)
+                    if desc is not None:
+                        bindings[i] = replace(b, show=show, description=desc)
+                    else:
+                        bindings[i] = replace(b, show=show)
         self.screen.refresh_bindings()
 
     # ── Tree navigation ───────────────────────────────────────────────────────
