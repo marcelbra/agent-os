@@ -53,6 +53,22 @@ class NavTree(Tree[Nav | None]):
             self._handle_enter(event)
         # "n" and "d" are NOT consumed here — they bubble to App BINDINGS.
 
+    # ── Expand/collapse icon updates ──────────────────────────────────────
+
+    _WORKSPACE_SECTIONS = ("roles", "milestones", "tasks")
+
+    def on_tree_node_expanded(self, event: Tree.NodeExpanded[Nav | None]) -> None:
+        node = event.node
+        nav = node.data
+        if isinstance(nav, Nav) and nav.kind == "section" and nav.section in self._WORKSPACE_SECTIONS:
+            node.set_label(str(node.label).replace("▶", "▼", 1))
+
+    def on_tree_node_collapsed(self, event: Tree.NodeCollapsed[Nav | None]) -> None:
+        node = event.node
+        nav = node.data
+        if isinstance(nav, Nav) and nav.kind == "section" and nav.section in self._WORKSPACE_SECTIONS:
+            node.set_label(str(node.label).replace("▼", "▶", 1))
+
     # ── Key handlers ──────────────────────────────────────────────────────
 
     def _is_interactive(self, node: TreeNode[Nav | None]) -> bool:
@@ -173,7 +189,7 @@ class NavTree(Tree[Nav | None]):
         _add_group_header("Workspaces")
         _add_separator()
         roles = self.root.add(
-            "⌄  Roles",
+            f"{'▼' if 'roles' in expanded else '▶'}  Roles",
             data=Nav("section", "", "roles"),
             expand="roles" in expanded,
         )
@@ -183,7 +199,7 @@ class NavTree(Tree[Nav | None]):
                 data=Nav("role", r.id, "roles"),
             )
         ms = self.root.add(
-            "⌄  Milestones",
+            f"{'▼' if 'milestones' in expanded else '▶'}  Milestones",
             data=Nav("section", "", "milestones"),
             expand="milestones" in expanded,
         )
@@ -193,7 +209,9 @@ class NavTree(Tree[Nav | None]):
                 data=Nav("milestone", m.id, "milestones"),
             )
         tasks_node = self.root.add(
-            "⌄  Tasks", data=Nav("section", "", "tasks"), expand="tasks" in expanded
+            f"{'▼' if 'tasks' in expanded else '▶'}  Tasks",
+            data=Nav("section", "", "tasks"),
+            expand="tasks" in expanded,
         )
         self._add_task_nodes(tasks_node, state.tasks, None, cfg, expanded_tasks)
         _add_separator()
