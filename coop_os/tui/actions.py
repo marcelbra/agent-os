@@ -99,16 +99,15 @@ class ActionsMixin(_CoopOSHost):
 
         match section:
             case "roles":
-                new_item = Role(
-                    id=self.store.roles.next_id(),
-                    title="New Role",
-                )
+                new_id = self.store.roles.next_id()
+                new_item = Role(id=new_id, title=f"Role {new_id.rsplit('-', 1)[-1]}")
                 self.store.roles.save(new_item)
                 kind = "role"
             case "milestones":
+                new_id = self.store.milestones.next_id()
                 new_item = Milestone(
-                    id=self.store.milestones.next_id(),
-                    title="New Milestone",
+                    id=new_id,
+                    title=f"Milestone {new_id.rsplit('-', 1)[-1]}",
                     start_date=today,
                     end_date="",
                 )
@@ -119,19 +118,18 @@ class ActionsMixin(_CoopOSHost):
                 if self.selected and self.selected.kind == "task":
                     current = next((t for t in self.state.tasks if t.id == self.selected.id), None)
                     parent = current.parent if current else None
+                new_id = self.store.tasks.next_id()
                 new_item = Task(
-                    id=self.store.tasks.next_id(),
-                    title="New Task",
+                    id=new_id,
+                    title=f"Task {new_id.rsplit('-', 1)[-1]}",
                     start_date=today,
                     parent=parent,
                 )
                 self.store.tasks.save(new_item)
                 kind = "task"
             case "contexts":
-                new_item = Context(
-                    id=self.store.contexts.next_id(),
-                    title="New Document",
-                )
+                new_id = self.store.contexts.next_id()
+                new_item = Context(id=new_id, title=f"Context {new_id.rsplit('-', 1)[-1]}")
                 self.store.contexts.save(new_item)
                 kind = "context"
             case "skills":
@@ -142,9 +140,8 @@ class ActionsMixin(_CoopOSHost):
                 self.store.skills.save(new_item)
                 kind = "skill"
             case _:
-                new_item = Note(
-                    id=self.store.notes.next_id(), title="New Note", date=today
-                )
+                new_id = self.store.notes.next_id()
+                new_item = Note(id=new_id, title=f"Note {new_id.rsplit('-', 1)[-1]}", date=today)
                 self.store.notes.save(new_item)
                 kind = "note"
 
@@ -160,9 +157,10 @@ class ActionsMixin(_CoopOSHost):
         if not self.selected or self.selected.kind != "task":
             return
         today = date.today().isoformat()
+        new_id = self.store.tasks.next_id()
         new_item = Task(
-            id=self.store.tasks.next_id(),
-            title="New Task",
+            id=new_id,
+            title=f"Task {new_id.rsplit('-', 1)[-1]}",
             start_date=today,
             parent=self.selected.id,
         )
