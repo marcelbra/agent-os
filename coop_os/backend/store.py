@@ -73,6 +73,12 @@ def _is_task_dir(d: Path) -> bool:
     return d.is_dir() and bool(_TASK_DIR_RE.match(d.name))
 
 
+def _id_sort_key(path: Path) -> int:
+    """Sort key for paths named like '{prefix}-{n}-{slug}': returns n as int."""
+    m = re.search(r"-(\d+)(?:-|$)", path.name)
+    return int(m.group(1)) if m else 0
+
+
 def _find_task_dir(search_dir: Path, task_id: str) -> Path | None:
     """Recursively find a task directory by ID under *search_dir*."""
     if not search_dir.exists():
@@ -133,7 +139,7 @@ class FlatFileStore[T: _HasId](ABC):
         errors: list[ParseError] = []
         if not self._dir.exists():
             return items, errors
-        for path in sorted(self._dir.glob("*.md")):
+        for path in sorted(self._dir.glob("*.md"), key=_id_sort_key):
             try:
                 meta, content = _read_fm(path)
                 items.append(self._parse(meta, content))
@@ -228,7 +234,7 @@ class TaskStore:
     def _load_from_dir(
         self, search_dir: Path, parent_id: str | None, tasks: list[Task], errors: list[ParseError]
     ) -> None:
-        for task_dir in sorted(d for d in search_dir.iterdir() if _is_task_dir(d)):
+        for task_dir in sorted((d for d in search_dir.iterdir() if _is_task_dir(d)), key=_id_sort_key):
             desc_path = task_dir / "description.md"
             if not desc_path.exists():
                 errors.append(ParseError(file=f"tasks/.../{task_dir.name}", error="Missing description.md"))
