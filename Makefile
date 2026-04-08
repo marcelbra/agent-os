@@ -1,13 +1,12 @@
-.PHONY: install lint format fix run test
+.PHONY: install lint format fix run test check
 
 install:  ## Install project dependencies
 	uv sync --group dev
 	git config core.hooksPath .githooks
 
-lint:  ## Check for linting, type errors, and tests
+lint:  ## Check for linting and type errors
 	uv run ruff check coop_os
 	uv run basedpyright coop_os
-	uv run pytest tests/
 
 format:  ## Format the code
 	uv run ruff format coop_os
@@ -17,6 +16,8 @@ fix:  ## Auto-fix ruff errors
 
 test:  ## Run the test suite
 	uv run pytest tests/
+
+check: lint test  ## Run lint and tests (CI)
 
 run:  ## Start the TUI
 	uv run coop-os start
