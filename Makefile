@@ -4,9 +4,10 @@ install:  ## Install project dependencies
 	uv sync --group dev
 	git config core.hooksPath .githooks
 
-lint:  ## Check for linting and type errors
+lint:  ## Check for linting, type errors, and tests
 	uv run ruff check coop_os
 	uv run basedpyright coop_os
+	uv run pytest tests/
 
 format:  ## Format the code
 	uv run ruff format coop_os

@@ -5,3 +5,7 @@ echo "Running linters..."
 uv run ruff check coop_os
 uv run basedpyright coop_os
 echo "Lint passed."
+
+echo "Running tests..."
+uv run pytest tests/
+echo "Tests passed."
