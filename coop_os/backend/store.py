@@ -374,6 +374,18 @@ class ProjectStore:
         self.contexts = ContextStore(root)
         self.skills = SkillStore(root)
 
+    def store_for(
+        self, kind: str
+    ) -> RoleStore | MilestoneStore | TaskStore | NoteStore | ContextStore | SkillStore | None:
+        return {
+            "role": self.roles,
+            "milestone": self.milestones,
+            "task": self.tasks,
+            "note": self.notes,
+            "context": self.contexts,
+            "skill": self.skills,
+        }.get(kind)
+
     def load(self) -> ProjectState:
         roles, role_errs = self.roles.load_all()
         milestones, ms_errs = self.milestones.load_all()
@@ -393,18 +405,5 @@ class ProjectStore:
         )
 
     def find_item_path(self, kind: str, item_id: str) -> Path | None:
-        match kind:
-            case "role":
-                return self.roles.find_path(item_id)
-            case "milestone":
-                return self.milestones.find_path(item_id)
-            case "task":
-                return self.tasks.find_path(item_id)
-            case "note":
-                return self.notes.find_path(item_id)
-            case "context":
-                return self.contexts.find_path(item_id)
-            case "skill":
-                return self.skills.find_path(item_id)
-            case _:
-                return None
+        store = self.store_for(kind)
+        return store.find_path(item_id) if store else None
