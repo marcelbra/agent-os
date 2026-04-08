@@ -10,7 +10,18 @@ from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import Tree
 
-from coop_os.backend.models import Context, Milestone, Note, ProjectState, Role, Skill, Task
+from coop_os.backend.models import (
+    Context,
+    Milestone,
+    MilestoneStatus,
+    Note,
+    ProjectState,
+    Role,
+    RoleStatus,
+    Skill,
+    Task,
+    TaskStatus,
+)
 from coop_os.backend.store import ProjectStore
 from coop_os.tui.confirm_delete import ConfirmDeleteScreen
 from coop_os.tui.filter_screen import FilterScreen
@@ -34,6 +45,7 @@ _SECTION_TO_KIND: dict[str, str] = {
     "contexts": "context",
     "skills": "skill",
 }
+_KIND_TO_COLLECTION: dict[str, str] = {v: k for k, v in _SECTION_TO_KIND.items()}
 
 
 class CoopOSApp(App[None]):
@@ -104,25 +116,13 @@ class CoopOSApp(App[None]):
             )
 
     def _item(self) -> Role | Milestone | Task | Note | Context | Skill | None:
-        n = self.selected
-        if not n or not self.state:
+        nav = self.selected
+        if not nav or not self.state:
             return None
-        s = self.state
-        match n.kind:
-            case "role":
-                return next((r for r in s.roles if r.id == n.id), None)
-            case "milestone":
-                return next((m for m in s.milestones if m.id == n.id), None)
-            case "task":
-                return next((t for t in s.tasks if t.id == n.id), None)
-            case "note":
-                return next((nt for nt in s.notes if nt.id == n.id), None)
-            case "context":
-                return next((d for d in s.contexts if d.id == n.id), None)
-            case "skill":
-                return next((sk for sk in s.skills if sk.id == n.id), None)
-            case _:
-                return None
+        attr = _KIND_TO_COLLECTION.get(nav.kind)
+        if not attr:
+            return None
+        return next((item for item in getattr(self.state, attr) if item.id == nav.id), None)
 
     def _item_path(self) -> Path | None:
         if not self.selected:
@@ -425,15 +425,7 @@ class CoopOSApp(App[None]):
     ) -> None:
         if not await self.push_screen_wait(ConfirmDeleteScreen(name)):
             return
-        store_map = {
-            "role": self.store.roles,
-            "milestone": self.store.milestones,
-            "task": self.store.tasks,
-            "note": self.store.notes,
-            "context": self.store.contexts,
-            "skill": self.store.skills,
-        }
-        store = store_map.get(nav.kind)
+        store = self.store.store_for(nav.kind)
         deleted = store.delete(nav.id) if store else False
         if deleted:
             self.selected = next_nav if next_nav and next_nav.kind != "section" else None
@@ -446,44 +438,29 @@ class CoopOSApp(App[None]):
 
     # ── Filter ────────────────────────────────────────────────────────────────
 
-    @work
-    async def action_filter_roles(self) -> None:
-        content = self.query_one(ContentPanel)
-        if content.is_editing:
+    async def _open_filter(
+        self, title: str, status_enum: type[RoleStatus | MilestoneStatus | TaskStatus], current: set[str], attr: str
+    ) -> None:
+        if self.query_one(ContentPanel).is_editing:
             return
-        from coop_os.backend.models import RoleStatus
-        options = [(s.value, s.value.replace("_", " ").title()) for s in RoleStatus]
-        result = await self.push_screen_wait(FilterScreen("Filter Roles", options, self.role_filters))
+        options = [(s.value, s.value.replace("_", " ").title()) for s in status_enum]
+        result = await self.push_screen_wait(FilterScreen(title, options, current))
         if result is not None:
-            self.role_filters = result
+            setattr(self, attr, result)
             self._reload()
             self._update_right_hints()
+
+    @work
+    async def action_filter_roles(self) -> None:
+        await self._open_filter("Filter Roles", RoleStatus, self.role_filters, "role_filters")
 
     @work
     async def action_filter_milestones(self) -> None:
-        content = self.query_one(ContentPanel)
-        if content.is_editing:
-            return
-        from coop_os.backend.models import MilestoneStatus
-        options = [(s.value, s.value.replace("_", " ").title()) for s in MilestoneStatus]
-        result = await self.push_screen_wait(FilterScreen("Filter Milestones", options, self.milestone_filters))
-        if result is not None:
-            self.milestone_filters = result
-            self._reload()
-            self._update_right_hints()
+        await self._open_filter("Filter Milestones", MilestoneStatus, self.milestone_filters, "milestone_filters")
 
     @work
     async def action_filter_tasks(self) -> None:
-        content = self.query_one(ContentPanel)
-        if content.is_editing:
-            return
-        from coop_os.backend.models import TaskStatus
-        options = [(s.value, s.value.replace("_", " ").title()) for s in TaskStatus]
-        result = await self.push_screen_wait(FilterScreen("Filter Tasks", options, self.task_filters))
-        if result is not None:
-            self.task_filters = result
-            self._reload()
-            self._update_right_hints()
+        await self._open_filter("Filter Tasks", TaskStatus, self.task_filters, "task_filters")
 
     # ── Misc ──────────────────────────────────────────────────────────────────
 
