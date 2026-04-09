@@ -131,10 +131,8 @@ class ActionsMixin(_CoopOSHost):
                 self.sm.store.contexts.save(new_item)
                 kind = "context"
             case "skills":
-                new_item = Skill(
-                    id=self.sm.store.skills.next_id(),
-                    command="new-skill",
-                )
+                slug = self.sm.store.skills.next_new_name()
+                new_item = Skill(name=slug)
                 self.sm.store.skills.save(new_item)
                 kind = "skill"
             case _:

@@ -67,9 +67,13 @@ class Context(BaseModel):
 
 
 class Skill(BaseModel):
-    id: str
-    command: str
+    name: str
+    description: str = ""
     content: str = ""
+
+    @property
+    def id(self) -> str:
+        return self.name
 
 
 class ParseError(BaseModel):

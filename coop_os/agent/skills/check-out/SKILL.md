@@ -1,6 +1,6 @@
 ---
-name: check-out
 description: Daily end-of-day check-out. Reviews what moved, captures loose ends, flags blockers, and previews tomorrow's priorities.
+name: check-out
 ---
 
 ## Steps
