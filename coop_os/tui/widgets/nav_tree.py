@@ -347,7 +347,7 @@ class NavTree(Tree[Nav | None]):
                 expand="skills" in expanded,
             )
             for s in state.skills:
-                skills.add_leaf(truncate_label(s.command), data=Nav("skill", s.id, "skills"))
+                skills.add_leaf(truncate_label(s.name), data=Nav("skill", s.id, "skills"))
         _sep()
 
     def focus_nav(self, nav: Nav) -> None:
