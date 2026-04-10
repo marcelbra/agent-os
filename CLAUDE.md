@@ -31,7 +31,7 @@ Two long-lived branches:
    ```
 6. Group changes by concern — one logical unit per PR
 
-Use squash merge: `gh pr merge <n> --repo marcelbra/coop-os --squash --delete-branch --auto`
+Use squash merge — wait for CI first, then: `gh pr merge <n> --repo marcelbra/coop-os --squash --delete-branch --admin`
 
 After merging, switch to develop and pull: `git checkout develop && git pull origin develop`
 
@@ -47,9 +47,10 @@ When `develop` is stable and ready to ship:
    ```
    gh pr create --repo marcelbra/coop-os --base main --head develop --title "Release vX.Y.Z"
    ```
-3. Merge with a merge commit (not squash — preserves develop history):
+3. Wait for CI, then merge with a merge commit (not squash — preserves develop history):
    ```
-   gh pr merge <n> --repo marcelbra/coop-os --merge --auto
+   gh pr checks <n> --repo marcelbra/coop-os --watch
+   gh pr merge <n> --repo marcelbra/coop-os --merge --admin
    ```
 4. The release workflow auto-tags `vX.Y.Z` and publishes to PyPI.
 5. Pull main locally: `git checkout main && git pull origin main`
@@ -58,7 +59,7 @@ When `develop` is stable and ready to ship:
 
 ### Merging rules
 
-**Always use `--auto` when merging** — never `--admin`. `--auto` waits for all required CI checks to pass before merging; `--admin` bypasses them entirely. Always let CI run.
+**Always wait for CI before merging.** After creating a PR, run `gh pr checks <n> --repo marcelbra/coop-os --watch` and wait for all checks to pass. Only then merge with `--admin`. Never merge while checks are failing or pending.
 
 **Always ask the user to test the changes before creating a PR.** After implementing, prompt the user to verify it works, then wait for confirmation before proceeding to create and merge the PR.
 
