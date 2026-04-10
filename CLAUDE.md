@@ -61,7 +61,18 @@ When `develop` is stable and ready to ship:
 
 **Always wait for CI before merging.** After creating a PR, run `gh pr checks <n> --repo marcelbra/coop-os --watch` and wait for all checks to pass. Only then merge with `--admin`. Never merge while checks are failing or pending.
 
-**Always ask the user to review and test before committing.** After implementing, show what changed and prompt the user to verify it works. Do not run `git commit` until the user explicitly confirms. Only after confirmation: commit, push, open the PR, and merge — all in one uninterrupted workflow.
+**Always ask the user to review and test before committing.** After implementing:
+1. Explain what changed, , concisely
+2. Run `make check` — if it passes, prompt the user to test
+3. Give them the exact commands to run in a new terminal window, as two lines:
+   ```
+   cd <worktree-path>
+   make run
+   ```
+4. Describe exactly what to verify — e.g. "You should see a bold orange `·` next to any task that has child tasks."
+5. Wait for explicit confirmation before running `git commit`
+
+Only after confirmation: commit, push, open the PR, and merge — all in one uninterrupted workflow.
 
 **Always merge immediately after creating a PR.** Don't wait for further confirmation after the user has already approved — create the PR and merge it in the same workflow.
 
