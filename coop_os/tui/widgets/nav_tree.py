@@ -603,8 +603,12 @@ class NavTree(Tree[Nav | None]):
                 and t.milestone not in visible_milestone_ids
             ):
                 continue
-            label = truncate_label(f"{cfg.task_statuses.get(t.status, '•')} {t.title}")
             has_subtasks = any(c.parent == t.id for c in all_tasks)
+            label: Text | str = truncate_label(f"{cfg.task_statuses.get(t.status, '•')} {t.title}")
+            if has_subtasks:
+                rich_label = Text(label)
+                rich_label.append(" ·", style="bold #f0883e")
+                label = rich_label
             task_dir = task_dirs.get(t.id)
             extra = _list_task_extras(task_dir) if task_dir else []
             nav = ContentNav("task", t.id, "tasks")
