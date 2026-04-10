@@ -21,14 +21,15 @@ Two long-lived branches:
 
 ### Day-to-day: feature → develop
 
-1. Branch off `origin/develop`: `git checkout -b <branch> origin/develop`
-2. Make focused, atomic commits
-3. Push to `origin`: `git push origin <branch>`
-4. Open PR against `develop` on `marcelbra/coop-os`:
+1. **Before starting any work**, ask the user: "Do you want to work in a worktree (isolated) or directly on the project?" Wait for their answer before proceeding.
+2. If worktree: call `EnterWorktree` with the branch name (following naming conventions above) — this creates an isolated worktree. If direct: create and check out the branch manually with `git checkout -b <branch> origin/develop`.
+3. Make focused, atomic commits
+4. If in a worktree: call `ExitWorktree` after committing — it cleans up automatically. Then push to `origin`. If direct: push to `origin`: `git push origin <branch>`.
+5. Open PR against `develop` on `marcelbra/coop-os`:
    ```
    gh pr create --repo marcelbra/coop-os --base develop --head <branch>
    ```
-5. Group changes by concern — one logical unit per PR
+6. Group changes by concern — one logical unit per PR
 
 Use squash merge: `gh pr merge <n> --repo marcelbra/coop-os --squash --delete-branch`
 
