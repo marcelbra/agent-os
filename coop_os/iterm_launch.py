@@ -39,8 +39,8 @@ def write_iterm_profiles() -> None:
     parts = base_font.rsplit(" ", 1)
     font_name = parts[0]
     base_size = float(parts[1]) if len(parts) > 1 else 13
-    tui_font = f"{font_name} {int(math.ceil(base_size * 1.35))}"
-    agent_font = f"{font_name} {int(math.ceil(base_size * 2.0))}"
+    tui_font = f"{font_name} {int(math.ceil(base_size * 1.5))}"
+    agent_font = f"{font_name} {int(math.ceil(base_size * 1.1))}"
 
     cs = "Color Space"
     dark_bg = {
@@ -60,6 +60,19 @@ def write_iterm_profiles() -> None:
         "Blue Component": 0.0, "Alpha Component": 1.0, cs: "sRGB",
     }
 
+    # Ctrl+Shift+Arrow key bindings for switching focus between panes.
+    # Key format: "0x{unicode}-0x{modifier_flags}" where arrow keys carry the
+    # NumericPad flag (0x200000) in addition to Ctrl (0x40000) and Shift (0x20000).
+    # Action 18 = KEY_ACTION_SELECT_PANE_LEFT, 19 = KEY_ACTION_SELECT_PANE_RIGHT.
+    # iTerm2 intercepts these before forwarding to the terminal, so they work
+    # inside the Textual TUI without any TUI-side changes. Both actions are
+    # directional (no wrap-around): pressing right while already in the
+    # rightmost pane does nothing, and vice versa.
+    pane_switch_key_map = {
+        "0xf703-0x260000": {"Action": 19, "Text": ""},  # Ctrl+Shift+Right → Select Pane Right
+        "0xf702-0x260000": {"Action": 18, "Text": ""},  # Ctrl+Shift+Left  → Select Pane Left
+    }
+
     profiles = {"Profiles": [
         {
             "Name": "coop-os-tui",
@@ -70,6 +83,9 @@ def write_iterm_profiles() -> None:
             "Foreground Color": light_fg,
             "Tab Color": blue_tab,
             "Use Tab Color": True,
+            "Title Components": 16,
+            "Custom Title": "coop-os",
+            "Keyboard Map": pane_switch_key_map,
         },
         {
             "Name": "coop-os-agent",
@@ -80,6 +96,9 @@ def write_iterm_profiles() -> None:
             "Foreground Color": light_fg,
             "Tab Color": orange_tab,
             "Use Tab Color": True,
+            "Title Components": 16,
+            "Custom Title": "coop-os",
+            "Keyboard Map": pane_switch_key_map,
         },
     ]}
 
@@ -146,6 +165,8 @@ tell application "iTerm2"
             write text "cd '{root_str}' && coop-os start"
         end tell
         tell agent_pane
+            set current_cols to columns
+            set columns to (round (current_cols * 0.30))
             write text "cd '{root_str}' && {agent_cmd}"
         end tell
     end tell
