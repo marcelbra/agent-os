@@ -23,15 +23,14 @@ from coop_os.backend.models import (
 # ── Private helpers ───────────────────────────────────────────────────────────
 
 
-def _slugify(text: str) -> str:
-    """Convert a string to a URL-safe slug.
+def sanitize_filename(text: str) -> str:
+    """Sanitize text for use as a filename component, preserving case and spaces.
 
-    Lowercases, strips non-word chars, collapses whitespace/underscores to hyphens, truncates at 40 chars.
+    Replaces path separators and null bytes with hyphens, strips leading/trailing
+    whitespace, and truncates at 60 characters.
     """
-    text = text.lower()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_]+", "-", text).strip("-")
-    return text[:40]
+    text = re.sub(r"[/\\\x00]", "-", text)
+    return text.strip()[:60]
 
 
 def _next_id(ids: list[str], prefix: str) -> str:
@@ -160,7 +159,7 @@ class FlatFileStore[T: _HasId](ABC):
     def save(self, item: T) -> None:
         self._dir.mkdir(parents=True, exist_ok=True)
         existing = _find_file_by_id(self._dir, item.id)
-        path = existing or self._dir / f"{item.id}-{_slugify(self._file_slug(item))}.md"
+        path = existing or self._dir / f"{item.id}-{sanitize_filename(self._file_slug(item))}.md"
         meta, content = self._to_meta_content(item)
         _write_fm(path, meta, content)
 
@@ -293,9 +292,9 @@ class TaskStore:
         elif task.parent:
             parent_dir = _find_task_dir(self._dir, task.parent)
             base = parent_dir if parent_dir else self._dir
-            task_dir = base / f"{task.id}-{_slugify(task.title)}"
+            task_dir = base / f"{task.id}-{sanitize_filename(task.title)}"
         else:
-            task_dir = self._dir / f"{task.id}-{_slugify(task.title)}"
+            task_dir = self._dir / f"{task.id}-{sanitize_filename(task.title)}"
         task_dir.mkdir(parents=True, exist_ok=True)
         meta: dict[str, Any] = {
             "id": task.id,
