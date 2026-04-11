@@ -1,6 +1,8 @@
 /* ── NavTree ──────────────────────────────────────────────────────────────── */
 /* Width must match _TREE_WIDTH in nav.py. */
 
+NavTree.-hidden { display: none; }
+
 NavTree {
     width: 30;
     min-width: 30;
