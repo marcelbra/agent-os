@@ -43,6 +43,8 @@ osascript \
   -e "      write text \"cd '$DIR' && make run\"" \
   -e '    end tell' \
   -e '    tell bottomPane' \
+  -e '      set current_cols to columns' \
+  -e '      set columns to (round (current_cols * 0.40))' \
   -e "      write text \"cd '$DIR' && $AGENT_CMD\"" \
   -e '    end tell' \
   -e '  end tell' \
