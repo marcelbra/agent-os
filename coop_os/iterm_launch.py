@@ -39,8 +39,8 @@ def write_iterm_profiles() -> None:
     parts = base_font.rsplit(" ", 1)
     font_name = parts[0]
     base_size = float(parts[1]) if len(parts) > 1 else 13
-    tui_font = f"{font_name} {int(math.ceil(base_size * 1.35))}"
-    agent_font = f"{font_name} {int(math.ceil(base_size * 2.0))}"
+    tui_font = f"{font_name} {int(math.ceil(base_size * 1.5))}"
+    agent_font = f"{font_name} {int(math.ceil(base_size * 1.1))}"
 
     cs = "Color Space"
     dark_bg = {
@@ -70,6 +70,8 @@ def write_iterm_profiles() -> None:
             "Foreground Color": light_fg,
             "Tab Color": blue_tab,
             "Use Tab Color": True,
+            "Title Components": 16,
+            "Custom Title": "coop-os",
         },
         {
             "Name": "coop-os-agent",
@@ -80,6 +82,8 @@ def write_iterm_profiles() -> None:
             "Foreground Color": light_fg,
             "Tab Color": orange_tab,
             "Use Tab Color": True,
+            "Title Components": 16,
+            "Custom Title": "coop-os",
         },
     ]}
 
@@ -146,6 +150,8 @@ tell application "iTerm2"
             write text "cd '{root_str}' && coop-os start"
         end tell
         tell agent_pane
+            set current_cols to columns
+            set columns to (round (current_cols * 0.30))
             write text "cd '{root_str}' && {agent_cmd}"
         end tell
     end tell
