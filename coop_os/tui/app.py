@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import frontmatter as _fm
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -28,7 +29,7 @@ from coop_os.backend.models import (
     Skill,
     Task,
 )
-from coop_os.backend.store import ProjectStore
+from coop_os.backend.store import ProjectStore, sanitize_filename
 from coop_os.tui.actions import ActionsMixin
 from coop_os.tui.keybindings_screen import KeybindingsScreen
 from coop_os.tui.nav import ContentNav, FileNav, Nav, StructuralNav, nav_from_parts, nav_to_parts
@@ -57,6 +58,11 @@ _SECTION_TO_KIND: dict[str, str] = {
     "skills": "skill",
 }
 
+# Match flat .md files: role-1-My Title.md  →  group 1="role-1", group 2="My Title"
+_FLAT_FILE_RENAME_RE = re.compile(r"^([a-z]+-\d+)-(.+)\.md$")
+# Match task directory names: task-1-My Task  →  group 1="task-1", group 2="My Task"
+_TASK_DIR_RENAME_RE = re.compile(r"^(task-\d+)-(.+)$")
+
 
 class CoopOSApp(ActionsMixin, App[None]):
     TITLE = "coop-os"
@@ -80,15 +86,10 @@ class CoopOSApp(ActionsMixin, App[None]):
         store = ProjectStore(root)
         self.sm = StateManager(store, root)
         self.selected: Nav | None = StructuralNav("section", "roles")
-        self._file_snapshot: FileSnapshot = FileSnapshot([
-            root / "coop_os" / "workspace",
-            root / "coop_os" / "user",
-            root / "coop_os" / "agent",
-        ])
+        self._file_snapshot: FileSnapshot = FileSnapshot(root)
         self._pending_reload: bool = False
         self._last_change_at: float = 0.0
         self._pending_changes: set[str] = set()
-        self._disk_change_warned: bool = False
         self._watcher_timer: Timer | None = None
 
     # ── Layout ────────────────────────────────────────────────────────────────
@@ -114,7 +115,7 @@ class CoopOSApp(ActionsMixin, App[None]):
         for sig in (signal.SIGHUP, signal.SIGTERM):
             signal.signal(sig, self._on_termination_signal)
         self._file_snapshot.build()
-        self._watcher_timer = self.set_interval(1.0, self._on_watch_tick, name="file-watcher")
+        self._watcher_timer = self.set_interval(0.15, self._on_watch_tick, name="file-watcher")
 
     def _on_termination_signal(self, signum: int, frame: types.FrameType | None) -> None:
         self._save_session()
@@ -196,7 +197,8 @@ class CoopOSApp(ActionsMixin, App[None]):
                 cursor_nav = cursor_node.data
         self._sync_state(initial_expansion)
         assert self.sm.state is not None
-        if cursor_nav is not None:
+        content = self.query_one(ContentPanel)
+        if cursor_nav is not None and not content.is_editing:
             tree.focus_nav(cursor_nav)
         if selected is not None:
             self._show_view()
@@ -302,13 +304,15 @@ class CoopOSApp(ActionsMixin, App[None]):
     def on_select_value_selected(self) -> None:
         self._save_current()
 
-    def _exit_edit_mode(self) -> None:
-        self._disk_change_warned = False
-        self._save_current()
+    def _clear_edit_classes(self) -> None:
         content = self.query_one(ContentPanel)
         content.remove_class("-editing")
         content.remove_class("-editing-struct")
         content.remove_class("-view-struct")
+
+    def _exit_edit_mode(self) -> None:
+        self._save_current()
+        self._clear_edit_classes()
         self._show_view()
         self._update_footer_hints(self.selected)
         tree = self.query_one(NavTree)
@@ -375,6 +379,7 @@ class CoopOSApp(ActionsMixin, App[None]):
             path = self._item_path()
             if not path or not path.exists():
                 return
+            self._file_snapshot.ensure_tracked(path)
             agent_doc = SimpleNamespace(content=path.read_text(encoding="utf-8"))
             if not self.sm.state:
                 return
@@ -383,6 +388,7 @@ class CoopOSApp(ActionsMixin, App[None]):
             path = self._item_path()
             if not path or not path.exists() or not self.sm.state:
                 return
+            self._file_snapshot.ensure_tracked(path)
             try:
                 text = path.read_text(encoding="utf-8")
             except Exception:
@@ -394,6 +400,9 @@ class CoopOSApp(ActionsMixin, App[None]):
             if not item or not self.sm.state:
                 return
             assert isinstance(self.selected, ContentNav)
+            path = self._item_path()
+            if path:
+                self._file_snapshot.ensure_tracked(path)
             content.enter_structured_edit(item, self.selected.kind, self.sm.cfg(), self.sm.state, select_all=select_all)
 
     # ── Auto-save ─────────────────────────────────────────────────────────────
@@ -405,12 +414,52 @@ class CoopOSApp(ActionsMixin, App[None]):
         path = self._item_path()
         if not path:
             return
+        new_text = content.editor_text
         try:
-            path.write_text(content.editor_text, encoding="utf-8")
-            self._file_snapshot.mark_written(path)
+            path.write_text(new_text, encoding="utf-8")
+            actual_path = self._rename_to_match_title(path, new_text)
+            if actual_path != path:
+                if isinstance(self.selected, ContentNav) and self.selected.kind == "task":
+                    self._file_snapshot.build()
+                else:
+                    self._file_snapshot.mark_renamed(path, actual_path)
+            else:
+                self._file_snapshot.mark_written(path)
             self._sync_state()
         except Exception as e:
             self.notify(str(e), severity="error", timeout=4)
+
+    def _rename_to_match_title(self, current_path: Path, new_text: str) -> Path:
+        """Rename file or task dir if the title no longer matches the path name.
+
+        Returns the path where the content now lives (unchanged if no rename needed).
+        Only acts on ContentNav items — FileNav items and skills are left untouched.
+        """
+        if not isinstance(self.selected, ContentNav):
+            return current_path
+        if self.selected.kind == "skill":
+            return current_path
+        post = _fm.loads(new_text)
+        new_title = str(post.metadata.get("title", ""))
+        if not new_title:
+            return current_path
+        new_safe = sanitize_filename(new_title)
+        item_id = self.selected.id
+        if self.selected.kind == "task":
+            task_dir = current_path.parent        # current_path is description.md
+            desired_name = f"{item_id}-{new_safe}"
+            if task_dir.name == desired_name:
+                return current_path
+            new_task_dir = task_dir.parent / desired_name
+            task_dir.rename(new_task_dir)
+            return new_task_dir / "description.md"
+        else:
+            desired_name = f"{item_id}-{new_safe}.md"
+            if current_path.name == desired_name:
+                return current_path
+            new_path = current_path.parent / desired_name
+            current_path.rename(new_path)
+            return new_path
 
     # ── Drag-and-drop file attachment ─────────────────────────────────────────
 
@@ -514,11 +563,13 @@ class CoopOSApp(ActionsMixin, App[None]):
     # ── File watcher ──────────────────────────────────────────────────────────
 
     def _on_watch_tick(self) -> None:
-        """Poll for external file changes once per second.
+        """Poll for external file changes every 150 ms.
 
         Debounces bursts of changes (e.g. the AI agent writing many files in
-        quick succession) by waiting 0.5 s of quiet before acting, so a rapid
+        quick succession) by waiting 300 ms of quiet before acting, so a rapid
         sequence of writes produces a single reload rather than many.
+        Timing: 150 ms poll + 300 ms debounce → visible within ~450 ms of an
+        external write.
         """
         try:
             changed = self._file_snapshot.scan()
@@ -526,35 +577,101 @@ class CoopOSApp(ActionsMixin, App[None]):
                 self._pending_reload = True
                 self._last_change_at = time.monotonic()
                 self._pending_changes |= changed
-            if self._pending_reload and time.monotonic() - self._last_change_at >= 0.5:
+            if self._pending_reload and time.monotonic() - self._last_change_at >= 0.30:
                 self._pending_reload = False
                 self._handle_external_change(self._pending_changes)
                 self._pending_changes = set()
         except Exception as exc:
             self.notify(f"File watcher error: {exc}", severity="error", timeout=10)
 
+    @staticmethod
+    def _rename_key(path: Path) -> tuple[tuple[Path, str], str] | None:
+        """Return ((context_dir, item_id), slug) for a rename-detectable .md path, or None.
+
+        Two patterns are recognised:
+        - Flat file:       {dir}/{prefix-N}-{slug}.md   → context_dir=dir, id=prefix-N
+        - Task description: {tasks}/{task-N}-{slug}/description.md → context_dir=tasks, id=task-N
+        """
+        if path.name == "description.md":
+            task_match = _TASK_DIR_RENAME_RE.match(path.parent.name)
+            if task_match:
+                return (path.parent.parent, task_match.group(1)), task_match.group(2)
+        elif path.suffix == ".md":
+            flat_match = _FLAT_FILE_RENAME_RE.match(path.name)
+            if flat_match:
+                return (path.parent, flat_match.group(1)), flat_match.group(2)
+        return None
+
+    def _write_title_from_slug(self, path: Path, new_slug: str) -> None:
+        """Overwrite the frontmatter 'title' in *path* with *new_slug* if it differs."""
+        try:
+            post = _fm.load(str(path))
+            if str(post.metadata.get("title", "")) == new_slug:
+                return
+            post.metadata["title"] = new_slug
+            path.write_text(_fm.dumps(post), encoding="utf-8")
+            self._file_snapshot.mark_written(path)
+        except Exception as exc:
+            self.notify(f"Failed to update title in {path.name}: {exc}", severity="warning", timeout=4.0)
+
+    def _apply_renames_to_frontmatter(self, changed_paths: set[str]) -> None:
+        """Update frontmatter titles when .md files are renamed externally.
+
+        Detects rename pairs — a path that disappeared (old) and a path that appeared
+        (new) in the same directory with the same item ID — and updates the frontmatter
+        'title' in the new file to match the new filename slug. This completes
+        bidirectional sync: the TUI renames files when the title changes in the editor
+        (_rename_to_match_title); here we update the title when the file is renamed
+        externally so the NavTree label reflects the new name without the user also
+        having to edit the frontmatter manually.
+        """
+        all_paths = [Path(p) for p in changed_paths]
+        removed: list[Path] = [path for path in all_paths if not path.exists()]
+        present: list[Path] = [path for path in all_paths if path.exists()]
+
+        removed_by_key: dict[tuple[Path, str], Path] = {}
+        for path in removed:
+            result = self._rename_key(path)
+            if result:
+                key, _ = result
+                removed_by_key[key] = path
+
+        if not removed_by_key:
+            return
+
+        for path in present:
+            result = self._rename_key(path)
+            if result is None:
+                continue
+            lookup_key, new_slug = result
+            if lookup_key not in removed_by_key:
+                continue
+            # Rename pair confirmed: update frontmatter title to match the new slug.
+            self._write_title_from_slug(path, new_slug)
+
     def _handle_external_change(self, changed_paths: set[str]) -> None:
         """React to external file changes detected by the watcher.
 
-        Cases:
-        - User is editing the exact file that changed (Case B): show a one-time
-          warning toast and do NOT reload, so their edits are not lost.
-        - Otherwise (Cases A and C): reload silently. This covers both the
-          not-editing case and the editing-a-different-file case — _reload()
-          already preserves focus and edit state in both scenarios.
+        First syncs frontmatter titles from any detected filename renames, then
+        applies conflict resolution:
+        - If the user is editing the exact file that changed: notify, force-exit
+          edit mode without saving, and reload so the agent's version is displayed.
+        - If the user is editing a different file: reload the tree silently without
+          disturbing the editor. The user can keep typing.
+        - If the user is not editing: reload silently.
         """
+        self._apply_renames_to_frontmatter(changed_paths)
         content = self.query_one(ContentPanel)
         if content.is_editing:
             editing_path = self._item_path()
             if editing_path and str(editing_path) in changed_paths:
-                if not self._disk_change_warned:
-                    self._disk_change_warned = True
-                    self.notify(
-                        f"'{editing_path.name}' changed on disk — your edits take priority. Ctrl+R to reload.",
-                        severity="warning",
-                        timeout=8.0,
-                    )
-                return
+                self.notify(
+                    f"'{editing_path.name}' was updated — reloading.",
+                    severity="information",
+                    timeout=4.0,
+                )
+                self._clear_edit_classes()
+                self._update_footer_hints(self.selected)
         self._reload()
 
     # ── Misc ──────────────────────────────────────────────────────────────────

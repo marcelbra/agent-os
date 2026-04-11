@@ -26,7 +26,7 @@ from coop_os.backend.store import (
     SkillStore,
     TaskStore,
     _next_id,
-    _slugify,
+    sanitize_filename,
 )
 
 
@@ -40,28 +40,32 @@ def make_root(tmp_path: Path) -> Path:
     return root
 
 
-# ── _slugify ──────────────────────────────────────────────────────────────────
+# ── sanitize_filename ─────────────────────────────────────────────────────────
 
 
-def test_slugify_basic() -> None:
-    assert _slugify("Hello World") == "hello-world"
+def test_sanitize_filename_preserves_case_and_spaces() -> None:
+    assert sanitize_filename("Hello World") == "Hello World"
 
 
-def test_slugify_strips_special_chars() -> None:
-    assert _slugify("Hello, World!") == "hello-world"
+def test_sanitize_filename_replaces_slash() -> None:
+    assert sanitize_filename("foo/bar") == "foo-bar"
 
 
-def test_slugify_trims_to_40_chars() -> None:
-    long = "a" * 50
-    assert len(_slugify(long)) <= 40
+def test_sanitize_filename_replaces_backslash() -> None:
+    assert sanitize_filename("foo\\bar") == "foo-bar"
 
 
-def test_slugify_collapses_whitespace() -> None:
-    assert _slugify("foo   bar") == "foo-bar"
+def test_sanitize_filename_strips_leading_trailing_whitespace() -> None:
+    assert sanitize_filename("  Hello  ") == "Hello"
 
 
-def test_slugify_empty_string() -> None:
-    assert _slugify("") == ""
+def test_sanitize_filename_trims_to_60_chars() -> None:
+    long = "a" * 70
+    assert len(sanitize_filename(long)) <= 60
+
+
+def test_sanitize_filename_empty_string() -> None:
+    assert sanitize_filename("") == ""
 
 
 # ── _next_id ──────────────────────────────────────────────────────────────────
