@@ -34,6 +34,7 @@ class StructuredEditor(Widget):
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._kind: str = ""
+        self._extra_meta: dict[str, Any] = {}
 
     def compose(self):
         for attr_key, label, _kinds, readonly in FIELD_DEFS:
@@ -47,7 +48,7 @@ class StructuredEditor(Widget):
         yield Rule(classes="se-sep", id="se-sep")
         yield BodyTextArea("", id="se-body", language="markdown", theme="vscode_dark")
 
-    def load(self, item: Any, kind: str, cfg: AppConfig, state: ProjectState) -> None:  # noqa: C901
+    def load(self, item: Any, kind: str, cfg: AppConfig, state: ProjectState) -> None:
         """Populate fields from *item* and show only the fields relevant to *kind*."""
         for cal in self.query(CalendarWidget):
             cal.remove()
@@ -62,34 +63,11 @@ class StructuredEditor(Widget):
             row.display = visible
             if visible:
                 raw = getattr(item, attr_key, None)
-                if isinstance(raw, list):
-                    val = ", ".join(str(v) for v in raw)
-                elif isinstance(raw, bool):
-                    val = "true" if raw else "false"
-                elif raw is None:
-                    val = ""
-                else:
-                    val = str(raw)
+                val = self._raw_attr_to_str(raw)
 
                 widget = self.query_one(f"#se-inp-{attr_key}")
                 if attr_key in SELECT_FIELDS:
-                    display: list[str] | None = None
-                    if attr_key == "status":
-                        if kind == "task":
-                            icons = cfg.task_statuses
-                        elif kind == "role":
-                            icons = cfg.role_statuses
-                        else:
-                            icons = cfg.milestone_statuses
-                        options: list[str] = list(icons.keys())
-                        display = [f"{icons[s]} {s}" for s in options]
-                    elif attr_key == "role":
-                        options = [""] + role_ids
-                    elif attr_key == "milestone":
-                        options = [""] + milestone_ids
-                    else:  # scanned
-                        options = list(SCANNED_ICONS.keys())
-                        display = [f"{SCANNED_ICONS[s]} {s}" for s in options]
+                    options, display = self._build_select_options(attr_key, kind, cfg, role_ids, milestone_ids)
                     sel = cast(SelectInput, widget)
                     sel.set_options(options, display)
                     sel.value = val
@@ -109,6 +87,71 @@ class StructuredEditor(Widget):
             ta.language = language or None
         ta.load_text(body)
         ta.move_cursor((0, 0))
+        self._capture_extra_meta(item, kind)
+
+    def _capture_extra_meta(self, item: Any, kind: str) -> None:
+        """Capture Pydantic model fields not rendered by FIELD_DEFS into _extra_meta.
+
+        Preserves fields like 'attachments' that the structured editor doesn't know
+        about, so editor_text can round-trip them without data loss. SimpleNamespace
+        objects (agent/task_file items) are skipped — they have no model_fields.
+        """
+        if not hasattr(type(item), "model_fields"):
+            self._extra_meta = {}
+            return
+        schema_keys = {attr_key for attr_key, _, kinds, _ in FIELD_DEFS if kind in kinds}
+        body_key = BODY_ATTR.get(kind, "content")
+        self._extra_meta = {}
+        for field_name in type(item).model_fields:
+            if field_name in schema_keys or field_name == body_key:
+                continue
+            val = getattr(item, field_name, None)
+            if val is None or val == [] or val == "":
+                continue
+            if isinstance(val, list) and val and hasattr(val[0], "model_dump"):
+                self._extra_meta[field_name] = [cast(Any, v).model_dump() for v in val]
+            elif hasattr(val, "model_dump"):
+                self._extra_meta[field_name] = cast(Any, val).model_dump()
+            else:
+                self._extra_meta[field_name] = val
+
+    def _raw_attr_to_str(self, raw: Any) -> str:
+        """Convert a raw attribute value to a string for display in a field."""
+        if isinstance(raw, list):
+            return ", ".join(str(v) for v in raw)
+        if isinstance(raw, bool):
+            return "true" if raw else "false"
+        if raw is None:
+            return ""
+        return str(raw)
+
+    def _build_select_options(
+        self,
+        attr_key: str,
+        kind: str,
+        cfg: AppConfig,
+        role_ids: list[str],
+        milestone_ids: list[str],
+    ) -> tuple[list[str], list[str] | None]:
+        """Build options and optional display labels for a select field."""
+        display: list[str] | None = None
+        if attr_key == "status":
+            if kind == "task":
+                icons = cfg.task_statuses
+            elif kind == "role":
+                icons = cfg.role_statuses
+            else:
+                icons = cfg.milestone_statuses
+            options: list[str] = list(icons.keys())
+            display = [f"{icons[s]} {s}" for s in options]
+        elif attr_key == "role":
+            options = [""] + role_ids
+        elif attr_key == "milestone":
+            options = [""] + milestone_ids
+        else:  # scanned
+            options = list(SCANNED_ICONS.keys())
+            display = [f"{SCANNED_ICONS[s]} {s}" for s in options]
+        return options, display
 
     def set_editable(self, editable: bool) -> None:
         """Toggle between view (read-only) and edit mode for non-readonly fields."""
@@ -224,7 +267,7 @@ class StructuredEditor(Widget):
             return ""
         if self._kind == "agent":
             return self.query_one("#se-body", BodyTextArea).text
-        meta: dict[str, Any] = {}
+        meta: dict[str, Any] = dict(self._extra_meta)
         for attr_key, _label, kinds, _readonly in FIELD_DEFS:
             if self._kind not in kinds:
                 continue

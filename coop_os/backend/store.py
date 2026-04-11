@@ -9,6 +9,7 @@ from typing import Any, Protocol
 import frontmatter
 
 from coop_os.backend.models import (
+    Attachment,
     Context,
     Milestone,
     Note,
@@ -22,20 +23,23 @@ from coop_os.backend.models import (
 # ── Private helpers ───────────────────────────────────────────────────────────
 
 
-def _slugify(text: str) -> str:
-    text = text.lower()
-    text = re.sub(r"[^\w\s-]", "", text)
-    text = re.sub(r"[\s_]+", "-", text).strip("-")
-    return text[:40]
+def sanitize_filename(text: str) -> str:
+    """Sanitize text for use as a filename component, preserving case and spaces.
+
+    Replaces path separators and null bytes with hyphens, strips leading/trailing
+    whitespace, and truncates at 60 characters.
+    """
+    text = re.sub(r"[/\\\x00]", "-", text)
+    return text.strip()[:60]
 
 
 def _next_id(ids: list[str], prefix: str) -> str:
     """Return the next sequential ID with the given type prefix (e.g. 'task-3')."""
     nums: list[int] = []
-    for i in ids:
-        if i.startswith(f"{prefix}-"):
+    for id_str in ids:
+        if id_str.startswith(f"{prefix}-"):
             try:
-                nums.append(int(i[len(prefix) + 1:]))
+                nums.append(int(id_str[len(prefix) + 1:]))
             except ValueError:
                 pass
     return f"{prefix}-{max(nums, default=0) + 1}"
@@ -61,6 +65,7 @@ def _fm_id(path: Path) -> str:
 
 
 def _find_file_by_id(directory: Path, item_id: str) -> Path | None:
+    """Glob for all *.md files in a directory, returning the first whose frontmatter 'id' field matches the given id."""
     if not directory.exists():
         return None
     return next((p for p in directory.glob("*.md") if _fm_id(p) == item_id), None)
@@ -69,14 +74,14 @@ def _find_file_by_id(directory: Path, item_id: str) -> Path | None:
 _TASK_DIR_RE = re.compile(r"^task-\d+-")
 
 
-def _is_task_dir(d: Path) -> bool:
-    return d.is_dir() and bool(_TASK_DIR_RE.match(d.name))
+def _is_task_dir(path: Path) -> bool:
+    return path.is_dir() and bool(_TASK_DIR_RE.match(path.name))
 
 
 def _id_sort_key(path: Path) -> int:
     """Sort key for paths named like '{prefix}-{n}-{slug}': returns n as int."""
-    m = re.search(r"-(\d+)(?:-|$)", path.name)
-    return int(m.group(1)) if m else 0
+    match = re.search(r"-(\d+)(?:-|$)", path.name)
+    return int(match.group(1)) if match else 0
 
 
 def _find_task_dir(search_dir: Path, task_id: str) -> Path | None:
@@ -154,7 +159,7 @@ class FlatFileStore[T: _HasId](ABC):
     def save(self, item: T) -> None:
         self._dir.mkdir(parents=True, exist_ok=True)
         existing = _find_file_by_id(self._dir, item.id)
-        path = existing or self._dir / f"{item.id}-{_slugify(self._file_slug(item))}.md"
+        path = existing or self._dir / f"{item.id}-{sanitize_filename(self._file_slug(item))}.md"
         meta, content = self._to_meta_content(item)
         _write_fm(path, meta, content)
 
@@ -234,6 +239,11 @@ class TaskStore:
     def _load_from_dir(
         self, search_dir: Path, parent_id: str | None, tasks: list[Task], errors: list[ParseError]
     ) -> None:
+        """Recursively load tasks from a directory tree, appending to tasks and errors lists.
+
+        The 'parent:' frontmatter field is intentionally ignored — directory nesting
+        is the authoritative parent-child relationship.
+        """
         for task_dir in sorted((d for d in search_dir.iterdir() if _is_task_dir(d)), key=_id_sort_key):
             desc_path = task_dir / "description.md"
             if not desc_path.exists():
@@ -254,6 +264,11 @@ class TaskStore:
                     milestone=str(meta["milestone"]) if meta.get("milestone") else None,
                     parent=parent_id,
                     description=content,
+                    attachments=[
+                        Attachment(**attachment)
+                        for attachment in meta.get("attachments", [])
+                        if (task_dir / attachment["filename"]).exists()
+                    ],
                 ))
                 self._load_from_dir(task_dir, str(meta["id"]), tasks, errors)
             except Exception as e:
@@ -277,9 +292,9 @@ class TaskStore:
         elif task.parent:
             parent_dir = _find_task_dir(self._dir, task.parent)
             base = parent_dir if parent_dir else self._dir
-            task_dir = base / f"{task.id}-{_slugify(task.title)}"
+            task_dir = base / f"{task.id}-{sanitize_filename(task.title)}"
         else:
-            task_dir = self._dir / f"{task.id}-{_slugify(task.title)}"
+            task_dir = self._dir / f"{task.id}-{sanitize_filename(task.title)}"
         task_dir.mkdir(parents=True, exist_ok=True)
         meta: dict[str, Any] = {
             "id": task.id,
@@ -292,18 +307,20 @@ class TaskStore:
             meta["milestone"] = task.milestone
         if task.parent:
             meta["parent"] = task.parent
+        if task.attachments:
+            meta["attachments"] = [attachment.model_dump() for attachment in task.attachments]
         _write_fm(task_dir / "description.md", meta, task.description)
 
     def delete(self, task_id: str) -> bool:
-        d = _find_task_dir(self._dir, task_id)
-        if d:
-            shutil.rmtree(d)
+        task_dir = _find_task_dir(self._dir, task_id)
+        if task_dir:
+            shutil.rmtree(task_dir)
             return True
         return False
 
     def find_path(self, task_id: str) -> Path | None:
-        d = _find_task_dir(self._dir, task_id)
-        return d / "description.md" if d else None
+        task_dir = _find_task_dir(self._dir, task_id)
+        return task_dir / "description.md" if task_dir else None
 
     def all_task_dirs(self) -> dict[str, Path]:
         """Return a mapping of task_id -> task_dir_path for every known task."""
@@ -312,16 +329,17 @@ class TaskStore:
         return result
 
     def _collect_dirs(self, search_dir: Path, result: dict[str, Path]) -> None:
+        """Recursively populate result dict with task_id → task_dir mappings for all task directories under root."""
         if not search_dir.exists():
             return
-        for d in search_dir.iterdir():
-            if _is_task_dir(d):
-                desc = d / "description.md"
+        for subdir in search_dir.iterdir():
+            if _is_task_dir(subdir):
+                desc = subdir / "description.md"
                 if desc.exists():
-                    tid = _fm_id(desc)
-                    if tid:
-                        result[tid] = d
-                self._collect_dirs(d, result)
+                    task_id = _fm_id(desc)
+                    if task_id:
+                        result[task_id] = subdir
+                self._collect_dirs(subdir, result)
 
 
 class NoteStore(FlatFileStore[Note]):

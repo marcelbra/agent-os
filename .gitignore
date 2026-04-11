@@ -18,9 +18,15 @@ Thumbs.db
 .claude/*
 !.claude/settings.json
 
+# Session state (per-user, not tracked)
+.coop-os-session.json
+
 # Personal data (not tracked)
 coop_os/workspace/roles/*
 coop_os/workspace/milestones/*
 coop_os/user/notes/*
 coop_os/user/context/*
 coop_os/workspace/tasks/*
+
+# Local specs (not tracked)
+specs/
