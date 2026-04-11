@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2026-04-12
+
+### Fixed
+- `Ctrl+Shift+Right/Left` switches focus between iTerm2 split panes in `make launch` (#145)
+
 ## [0.6.0] - 2026-04-11
 
 ### Added
