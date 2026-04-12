@@ -24,9 +24,9 @@ NavTree .tree--highlight      { background: transparent; }
 NavTree .tree--highlight-line { background: transparent; }
 NavTree .tree--guides         { color: #0d1117; }
 
-/* Unfocused cursor: invisible (no black flicker when navigating). */
+/* Unfocused cursor: subtle grey-blue (visible when editing or nav unfocused). */
 NavTree .tree--cursor {
-    background: transparent;
+    background: #1e3a52;
     text-style: none;
 }
 /* Focused cursor: normal blue highlight. */
@@ -34,6 +34,12 @@ NavTree:focus .tree--cursor {
     background: $block-cursor-background;
     color: $block-cursor-foreground;
     text-style: $block-cursor-text-style;
+}
+/* Window-blurred: override focus state with grey-blue (higher specificity wins). */
+NavTree.-window-blurred:focus .tree--cursor {
+    background: #1e3a52;
+    color: $foreground;
+    text-style: none;
 }
 
 /* ── ContentPanel ─────────────────────────────────────────────────────────── */

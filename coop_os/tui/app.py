@@ -309,6 +309,20 @@ class CoopOSApp(ActionsMixin, App[None]):
     def on_select_value_selected(self) -> None:
         self._save_current()
 
+    def on_app_blur(self) -> None:
+        """Terminal window lost focus — force grey-blue nav cursor even if :focus persists."""
+        try:
+            self.query_one(NavTree).add_class("-window-blurred")
+        except NoMatches:
+            pass
+
+    def on_app_focus(self) -> None:
+        """Terminal window gained focus — restore normal focus-driven cursor colour."""
+        try:
+            self.query_one(NavTree).remove_class("-window-blurred")
+        except NoMatches:
+            pass
+
     def _clear_edit_classes(self) -> None:
         content = self.query_one(ContentPanel)
         content.remove_class("-editing")
