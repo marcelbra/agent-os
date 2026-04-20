@@ -140,6 +140,23 @@ Use the Makefile for common tasks:
 
 Always run `make check` after making changes — it runs ruff, basedpyright, and pytest. Use `make fix` to auto-resolve import ordering and other fixable issues.
 
+### Skills: personal vs. repo-standard
+
+All skills live in **one** directory: `coop_os/agent/skills/`. By default, anything dropped in there is **personal** — `.gitignore` ignores the directory's contents, so new skills stay local and never ship via PyPI. A small allowlist of repo-standard skills (the ones bundled with the package) is explicitly un-ignored.
+
+```
+mkdir -p coop_os/agent/skills/my-skill
+$EDITOR coop_os/agent/skills/my-skill/SKILL.md
+make skills   # installs everything (allowlisted + personal) into .claude/skills/
+```
+
+**Publishing a personal skill** (promoting it to a tracked, shipped skill):
+
+1. Add `!coop_os/agent/skills/<slug>/` to the skills allowlist block in `.gitignore`.
+2. `git add coop_os/agent/skills/<slug>/` and commit.
+
+**Rule of thumb**: if a skill's "Required reading" section points at a file under `coop_os/user/` or `coop_os/workspace/`, it should stay personal — don't add it to the allowlist.
+
 ## Code Standards
 
 ### Naming
