@@ -140,6 +140,19 @@ Use the Makefile for common tasks:
 
 Always run `make check` after making changes — it runs ruff, basedpyright, and pytest. Use `make fix` to auto-resolve import ordering and other fixable issues.
 
+### Skills: shared vs. personal
+
+Two source directories feed `make skills`:
+
+| Directory | Tracked? | Ships via PyPI | Use for |
+|-----------|----------|----------------|---------|
+| `coop_os/agent/skills/` | yes | yes | Skills useful to everyone — reference only `coop_os/agent/` or generic state |
+| `coop_os/user/skills/` | no (gitignored, except `README.md`) | no | Personal skills — anything that references `coop_os/user/` or `coop_os/workspace/` data |
+
+`make skills` installs shared skills unconditionally, then installs personal skills if `coop_os/user/skills/` contains anything besides the README. Drop a `<slug>/SKILL.md` into `coop_os/user/skills/` and re-run `make skills` — the skill appears in `.claude/skills/` and never gets committed.
+
+**Rule of thumb**: if a skill's "Required reading" section points at a file under `coop_os/user/` or `coop_os/workspace/`, it belongs in `user/skills/`, not `agent/skills/`.
+
 ## Code Standards
 
 ### Naming

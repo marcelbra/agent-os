@@ -57,6 +57,8 @@ coop_os/workspace/roles/*
 coop_os/workspace/milestones/*
 coop_os/user/notes/*
 coop_os/user/context/*
+coop_os/user/skills/*
+!coop_os/user/skills/README.md
 coop_os/workspace/tasks/*
 
 # Local specs (not tracked)
