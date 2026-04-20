@@ -14,6 +14,7 @@ class _SessionData(TypedDict, total=False):
     task_filters: list[str]
     expanded_sections: list[str]
     expanded_tasks: list[str]
+    expanded_contexts: list[str]
     expanded_dirs: list[str]
     selected_kind: str
     selected_id: str
@@ -27,6 +28,7 @@ class SessionState:
     task_filters: set[str] = field(default_factory=set)
     expanded_sections: set[str] = field(default_factory=set)
     expanded_tasks: set[str] = field(default_factory=set)
+    expanded_contexts: set[str] = field(default_factory=set)
     expanded_dirs: set[str] = field(default_factory=set)
     selected_kind: str = "section"
     selected_id: str = ""
@@ -45,6 +47,7 @@ def load_session(root: Path) -> SessionState:
             task_filters=set(data.get("task_filters", [])),
             expanded_sections=set(data.get("expanded_sections", [])),
             expanded_tasks=set(data.get("expanded_tasks", [])),
+            expanded_contexts=set(data.get("expanded_contexts", [])),
             expanded_dirs=set(data.get("expanded_dirs", [])),
             selected_kind=data.get("selected_kind", "section"),
             selected_id=data.get("selected_id", ""),
@@ -63,6 +66,7 @@ def save_session(root: Path, state: SessionState) -> None:
             "task_filters": sorted(state.task_filters),
             "expanded_sections": sorted(state.expanded_sections),
             "expanded_tasks": sorted(state.expanded_tasks),
+            "expanded_contexts": sorted(state.expanded_contexts),
             "expanded_dirs": sorted(state.expanded_dirs),
             "selected_kind": state.selected_kind,
             "selected_id": state.selected_id,

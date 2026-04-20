@@ -1003,7 +1003,7 @@ def seed_user(coop_os_dir: Path) -> None:
     user_dir = coop_os_dir / "user"
 
     write_file(
-        user_dir / "context" / "context-1-Personal Mission Statement.md",
+        user_dir / "context" / "context-1-Personal Mission Statement" / "description.md",
         """\
 ---
 id: context-1
@@ -1065,7 +1065,7 @@ title: Personal Mission Statement
     )
 
     write_file(
-        user_dir / "context" / "context-2-Life Framework Overview.md",
+        user_dir / "context" / "context-2-Life Framework Overview" / "description.md",
         """\
 ---
 id: context-2
@@ -1107,7 +1107,7 @@ This system is built on a three-layer hierarchy:
     )
 
     write_file(
-        user_dir / "context" / "context-3-Recurring Habits.md",
+        user_dir / "context" / "context-3-Recurring Habits" / "description.md",
         """\
 ---
 id: context-3

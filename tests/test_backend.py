@@ -441,13 +441,18 @@ def test_note_next_id(tmp_path: Path) -> None:
 def test_context_save_and_load(tmp_path: Path) -> None:
     root = make_root(tmp_path)
     store = ContextStore(root)
-    ctx = Context(id="context-1", title="Architecture", content="# Overview\n\nDetails here.")
+    ctx = Context(id="context-1", title="Architecture", description="# Overview\n\nDetails here.")
     store.save(ctx)
     contexts, errors = store.load_all()
     assert errors == []
     assert len(contexts) == 1
     assert contexts[0].id == "context-1"
-    assert contexts[0].content == "# Overview\n\nDetails here."
+    assert contexts[0].description == "# Overview\n\nDetails here."
+    # Folder-shaped on disk, body lives in description.md.
+    path = store.find_path("context-1")
+    assert path is not None
+    assert path.name == "description.md"
+    assert path.parent.name == "context-1-Architecture"
 
 
 def test_context_delete(tmp_path: Path) -> None:
@@ -458,6 +463,75 @@ def test_context_delete(tmp_path: Path) -> None:
     assert store.delete("context-1") is True
     contexts, _ = store.load_all()
     assert contexts == []
+
+
+def test_context_subcontext_nesting(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    store = ContextStore(root)
+    parent = Context(id="context-1", title="Parent")
+    child = Context(id="context-2", title="Child", parent="context-1")
+    store.save(parent)
+    store.save(child)
+    contexts, errors = store.load_all()
+    assert errors == []
+    assert len(contexts) == 2
+    parent_loaded = next(c for c in contexts if c.id == "context-1")
+    child_loaded = next(c for c in contexts if c.id == "context-2")
+    assert parent_loaded.parent is None
+    assert child_loaded.parent == "context-1"
+
+
+def test_context_next_id_empty(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    store = ContextStore(root)
+    assert store.next_id() == "context-1"
+
+
+def test_context_next_id_with_subcontexts(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    store = ContextStore(root)
+    parent = Context(id="context-1", title="Parent")
+    child = Context(id="context-2", title="Child", parent="context-1")
+    store.save(parent)
+    store.save(child)
+    assert store.next_id() == "context-3"
+
+
+def test_context_find_path(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    store = ContextStore(root)
+    store.save(Context(id="context-1", title="My Context"))
+    path = store.find_path("context-1")
+    assert path is not None
+    assert path.name == "description.md"
+    assert path.exists()
+
+
+def test_context_loose_file_survives_save(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    store = ContextStore(root)
+    ctx = Context(id="context-1", title="CV", description="initial")
+    store.save(ctx)
+    ctx_dir = store.find_path("context-1")
+    assert ctx_dir is not None
+    loose = ctx_dir.parent / "render.py"
+    loose.write_text("print('hi')", encoding="utf-8")
+    store.save(ctx.model_copy(update={"description": "updated"}))
+    assert loose.exists()
+    assert loose.read_text(encoding="utf-8") == "print('hi')"
+
+
+def test_context_delete_removes_tree(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
+    store = ContextStore(root)
+    ctx = Context(id="context-1", title="CV")
+    store.save(ctx)
+    ctx_path = store.find_path("context-1")
+    assert ctx_path is not None
+    ctx_dir = ctx_path.parent
+    (ctx_dir / "asset.txt").write_text("x", encoding="utf-8")
+    assert store.delete("context-1") is True
+    assert not ctx_dir.exists()
 
 
 # ── SkillStore ────────────────────────────────────────────────────────────────

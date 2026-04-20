@@ -119,6 +119,10 @@ class StateManager:
         """Return a mapping of task_id -> task_dir_path for all tasks."""
         return self.store.tasks.all_task_dirs()
 
+    def context_dirs(self) -> dict[str, Path]:
+        """Return a mapping of context_id -> context_dir_path for all contexts."""
+        return self.store.contexts.all_context_dirs()
+
     def item_path(self, nav: Nav | None) -> Path | None:
         """Resolve disk path for the item pointed to by *nav*."""
         if not nav:
@@ -126,7 +130,7 @@ class StateManager:
         if isinstance(nav, FileNav):
             if nav.kind == "agent":
                 return self.root / "coop_os" / "agent" / "AGENT.md"
-            return nav.path  # task_file
+            return nav.path  # task_file / task_dir / context_file / context_dir
         if isinstance(nav, ContentNav):
             return self.store.find_item_path(nav.kind, nav.id)
         return None

@@ -116,6 +116,8 @@ class ActionsMixin(_CoopOSHost):
         if isinstance(self.selected, (ContentNav, StructuralNav)):
             return self.selected.section
         if isinstance(self.selected, FileNav):
+            if self.selected.kind in ("context_file", "context_dir"):
+                return "contexts"
             return "tasks"
         cursor = self.query_one(NavTree).cursor_node
         nav = cursor.data if cursor else None
@@ -192,23 +194,37 @@ class ActionsMixin(_CoopOSHost):
         self.query_one(NavTree).focus_nav(self.selected)
         self._show_edit(select_all=True)
 
-    def action_new_subtask(self: _CoopOSHost) -> None:
+    def action_new_subitem(self: _CoopOSHost) -> None:
+        """Create a child item nested under the currently-selected task or context."""
         content = self.query_one(ContentPanel)
         if content.is_editing or not self.sm.state:
             return
-        if not isinstance(self.selected, ContentNav) or self.selected.kind != "task":
+        if not isinstance(self.selected, ContentNav) or self.selected.kind not in ("task", "context"):
             return
-        today = date.today().isoformat()
-        new_id = self.sm.store.tasks.next_id()
-        new_item = Task(
-            id=new_id,
-            title=f"Task {new_id.rsplit('-', 1)[-1]}",
-            start_date=today,
-            parent=self.selected.id,
-        )
-        self.sm.store.tasks.save(new_item)
+        parent_id = self.selected.id
+        selected: ContentNav
+        if self.selected.kind == "task":
+            today = date.today().isoformat()
+            task_id = self.sm.store.tasks.next_id()
+            new_task = Task(
+                id=task_id,
+                title=f"Task {task_id.rsplit('-', 1)[-1]}",
+                start_date=today,
+                parent=parent_id,
+            )
+            self.sm.store.tasks.save(new_task)
+            selected = ContentNav("task", new_task.id, "tasks")
+        else:
+            ctx_id = self.sm.store.contexts.next_id()
+            new_context = Context(
+                id=ctx_id,
+                title=f"Context {ctx_id.rsplit('-', 1)[-1]}",
+                parent=parent_id,
+            )
+            self.sm.store.contexts.save(new_context)
+            selected = ContentNav("context", new_context.id, "contexts")
         self._sync_state()
-        self.selected = ContentNav("task", new_item.id, "tasks")
+        self.selected = selected
         self.query_one(NavTree).focus_nav(self.selected)
         self._show_edit(select_all=True)
 
@@ -232,7 +248,12 @@ class ActionsMixin(_CoopOSHost):
         self._confirm_and_delete(nav, name, next_nav)
 
     def _next_nav_after_file_delete(self: _CoopOSHost, nav: FileNav) -> Nav:
-        """Return the Nav to focus after a task_file or task_dir is deleted."""
+        """Return the Nav to focus after a file/dir inside a task or context is deleted."""
+        owning_section = "contexts" if nav.kind in ("context_file", "context_dir") else "tasks"
+        owning_content_kind = "context" if owning_section == "contexts" else "task"
+        owning_dir_kind: tuple[str, ...] = (
+            ("context_dir",) if owning_section == "contexts" else ("task_dir",)
+        )
         tree = self.query_one(NavTree)
         for node in tree.iter_all_nodes(tree.root):
             data = node.data
@@ -262,12 +283,12 @@ class ActionsMixin(_CoopOSHost):
             # Last child — go to parent; tree rebuild will close it if empty
             parent_data = parent_node.data
             if parent_data is not None and (
-                (isinstance(parent_data, ContentNav) and parent_data.kind == "task")
-                or (isinstance(parent_data, FileNav) and parent_data.kind == "task_dir")
+                (isinstance(parent_data, ContentNav) and parent_data.kind == owning_content_kind)
+                or (isinstance(parent_data, FileNav) and parent_data.kind in owning_dir_kind)
             ):
                 return parent_data
             break
-        return StructuralNav("section", "tasks")
+        return StructuralNav("section", owning_section)
 
     def _next_nav_after_delete(self: _CoopOSHost, nav: Nav) -> Nav:
         """Return the Nav to focus after *nav* is deleted."""

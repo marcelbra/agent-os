@@ -12,7 +12,7 @@ FIELD_DEFS: list[tuple[str, str, frozenset[str], bool]] = [
     ("status",      "status",      frozenset({"role", "milestone", "task"}),                               False),
     ("role",        "role",        frozenset({"milestone"}),                                               False),
     ("milestone",   "milestone",   frozenset({"task"}),                                                    False),
-    ("parent",      "parent",      frozenset({"task"}),                                                    True),
+    ("parent",      "parent",      frozenset({"task", "context"}),                                        True),
     ("id",          "id",          frozenset({"role", "milestone", "task", "note", "context"}),            True),
 ]
 
@@ -24,7 +24,7 @@ BODY_ATTR: dict[str, str] = {
     "milestone": "description",
     "task": "description",
     "note": "content",
-    "context": "content",
+    "context": "description",
     "skill": "content",
     "agent": "content",
 }
