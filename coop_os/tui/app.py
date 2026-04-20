@@ -62,6 +62,8 @@ _SECTION_TO_KIND: dict[str, str] = {
 _FLAT_FILE_RENAME_RE = re.compile(r"^([a-z]+-\d+)-(.+)\.md$")
 # Match task directory names: task-1-My Task  →  group 1="task-1", group 2="My Task"
 _TASK_DIR_RENAME_RE = re.compile(r"^(task-\d+)-(.+)$")
+# Match context directory names: context-1-My Ctx  →  group 1="context-1", group 2="My Ctx"
+_CONTEXT_DIR_RENAME_RE = re.compile(r"^(context-\d+)-(.+)$")
 
 
 class CoopOSApp(ActionsMixin, App[None]):
@@ -74,7 +76,7 @@ class CoopOSApp(ActionsMixin, App[None]):
         Binding("m", "filter_milestones", "milestone", show=False),
         Binding("t", "filter_tasks", "task", show=False),
         Binding("n", "new_item", "new", show=False),
-        Binding("ctrl+n", "new_subtask", "new subtask", show=False),
+        Binding("ctrl+n", "new_subitem", "new subitem", show=False),
         Binding("d", "delete_item", "delete", show=False),
         Binding("ctrl+r", "refresh_state", "Refresh", show=False),
         Binding("k", "show_keybindings", "keys", show=False),
@@ -113,7 +115,10 @@ class CoopOSApp(ActionsMixin, App[None]):
         if session.selected_kind:
             self.selected = nav_from_parts(session.selected_kind, session.selected_id, session.selected_section)
         self._reload(initial_expansion=ExpansionState(
-            session.expanded_sections, session.expanded_tasks, session.expanded_dirs
+            session.expanded_sections,
+            session.expanded_tasks,
+            session.expanded_contexts,
+            session.expanded_dirs,
         ))
         self._update_right_hints()
         for sig in (signal.SIGHUP, signal.SIGTERM):
@@ -144,6 +149,7 @@ class CoopOSApp(ActionsMixin, App[None]):
                 task_filters=self.sm.task_filters,
                 expanded_sections=expansion.sections,
                 expanded_tasks=expansion.tasks,
+                expanded_contexts=expansion.contexts,
                 expanded_dirs=expansion.dirs,
                 selected_kind=sel_kind,
                 selected_id=sel_id,
@@ -172,6 +178,7 @@ class CoopOSApp(ActionsMixin, App[None]):
         self.query_one(NavTree).populate(
             state, self.root, self.sm.role_filters, self.sm.milestone_filters, self.sm.task_filters,
             task_dirs=self.sm.task_dirs(),
+            context_dirs=self.sm.context_dirs(),
             visible_role_ids=visible_role_ids,
             visible_milestone_ids=visible_milestone_ids,
             initial_expansion=initial_expansion,
@@ -231,13 +238,15 @@ class CoopOSApp(ActionsMixin, App[None]):
             new_kind: str | None = None
             if isinstance(nav, StructuralNav) and nav.section in _SECTION_TO_KIND:
                 new_kind = _SECTION_TO_KIND[nav.section]
-            elif isinstance(nav, ContentNav) and nav.kind != "context":
+            elif isinstance(nav, ContentNav):
                 new_kind = nav.kind
             if new_kind:
                 pairs.append(("n", f"new {new_kind}"))
             if isinstance(nav, ContentNav) and nav.kind == "task":
                 pairs.append(("^n", "new subtask"))
                 pairs.append(("drop", "attach file"))
+            elif isinstance(nav, ContentNav) and nav.kind == "context":
+                pairs.append(("^n", "new sub-context"))
             if isinstance(nav, ContentNav):
                 pairs.append(("d", "delete"))
 
@@ -364,7 +373,7 @@ class CoopOSApp(ActionsMixin, App[None]):
             agent_doc = SimpleNamespace(content=text)
             content.show_struct_view(agent_doc, "agent", self.sm.cfg(), self.sm.state)
             self.query_one(NavTree).focus()
-        elif isinstance(self.selected, FileNav) and self.selected.kind == "task_file":
+        elif isinstance(self.selected, FileNav) and self.selected.kind in ("task_file", "context_file"):
             path = self._item_path()
             if not path or not path.exists() or not self.sm.state:
                 return
@@ -377,7 +386,7 @@ class CoopOSApp(ActionsMixin, App[None]):
             file_doc = SimpleNamespace(content=text, language=FILE_LANGUAGES.get(path.suffix.lower(), ""))
             content.show_struct_view(file_doc, "agent", self.sm.cfg(), self.sm.state)
             self.query_one(NavTree).focus()
-        elif isinstance(self.selected, FileNav) and self.selected.kind == "task_dir":
+        elif isinstance(self.selected, FileNav) and self.selected.kind in ("task_dir", "context_dir"):
             content.clear()
             self.query_one(NavTree).focus()
         else:
@@ -403,7 +412,7 @@ class CoopOSApp(ActionsMixin, App[None]):
             if not self.sm.state:
                 return
             content.enter_structured_edit(agent_doc, "agent", self.sm.cfg(), self.sm.state)
-        elif isinstance(self.selected, FileNav) and self.selected.kind == "task_file":
+        elif isinstance(self.selected, FileNav) and self.selected.kind in ("task_file", "context_file"):
             path = self._item_path()
             if not path or not path.exists() or not self.sm.state:
                 return
@@ -439,7 +448,7 @@ class CoopOSApp(ActionsMixin, App[None]):
             path.write_text(new_text, encoding="utf-8")
             actual_path = self._rename_to_match_title(path, new_text)
             if actual_path != path:
-                if isinstance(self.selected, ContentNav) and self.selected.kind == "task":
+                if isinstance(self.selected, ContentNav) and self.selected.kind in ("task", "context"):
                     self._file_snapshot.build()
                 else:
                     self._file_snapshot.mark_renamed(path, actual_path)
@@ -467,14 +476,14 @@ class CoopOSApp(ActionsMixin, App[None]):
             return current_path
         new_safe = sanitize_filename(new_title)
         item_id = self.selected.id
-        if self.selected.kind == "task":
-            task_dir = current_path.parent        # current_path is description.md
+        if self.selected.kind in ("task", "context"):
+            entity_dir = current_path.parent      # current_path is description.md
             desired_name = f"{item_id}-{new_safe}"
-            if task_dir.name == desired_name:
+            if entity_dir.name == desired_name:
                 return current_path
-            new_task_dir = task_dir.parent / desired_name
-            task_dir.rename(new_task_dir)
-            return new_task_dir / "description.md"
+            new_entity_dir = entity_dir.parent / desired_name
+            entity_dir.rename(new_entity_dir)
+            return new_entity_dir / "description.md"
         else:
             desired_name = f"{item_id}-{new_safe}.md"
             if current_path.name == desired_name:
@@ -608,16 +617,20 @@ class CoopOSApp(ActionsMixin, App[None]):
 
     @staticmethod
     def _rename_key(path: Path) -> tuple[tuple[Path, str], str] | None:
-        """Return ((context_dir, item_id), slug) for a rename-detectable .md path, or None.
+        """Return ((container_dir, item_id), slug) for a rename-detectable .md path, or None.
 
-        Two patterns are recognised:
-        - Flat file:       {dir}/{prefix-N}-{slug}.md   → context_dir=dir, id=prefix-N
-        - Task description: {tasks}/{task-N}-{slug}/description.md → context_dir=tasks, id=task-N
+        Three patterns are recognised:
+        - Flat file:             {dir}/{prefix-N}-{slug}.md              → container=dir, id=prefix-N
+        - Task description:      {tasks}/{task-N}-{slug}/description.md  → container=tasks, id=task-N
+        - Context description:   {contexts}/{context-N}-{slug}/description.md → container=contexts, id=context-N
         """
         if path.name == "description.md":
             task_match = _TASK_DIR_RENAME_RE.match(path.parent.name)
             if task_match:
                 return (path.parent.parent, task_match.group(1)), task_match.group(2)
+            context_match = _CONTEXT_DIR_RENAME_RE.match(path.parent.name)
+            if context_match:
+                return (path.parent.parent, context_match.group(1)), context_match.group(2)
         elif path.suffix == ".md":
             flat_match = _FLAT_FILE_RENAME_RE.match(path.name)
             if flat_match:

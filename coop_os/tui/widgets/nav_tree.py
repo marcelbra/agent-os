@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 from rich.text import Text
 from textual.events import Click, Key, MouseDown
@@ -10,9 +10,10 @@ from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets._tree import TreeNode
 
-from coop_os.backend.models import ProjectState, Task
+from coop_os.backend.models import Context, ProjectState, Task
 from coop_os.tui.nav import (
     ContentNav,
+    FileKind,
     FileNav,
     Nav,
     StructuralNav,
@@ -27,9 +28,11 @@ from coop_os.tui.widgets.config import DIR_ICON, FILE_ICON_DEFAULT, FILE_ICONS, 
 class ExpansionState(NamedTuple):
     sections: set[str]
     tasks: set[str]
+    contexts: set[str]
     dirs: set[str]
 
 _TASK_DIR_PREFIX = re.compile(r"^task-\d+-")
+_CONTEXT_DIR_PREFIX = re.compile(r"^context-\d+-")
 
 
 def _file_icon(path: Path) -> str:
@@ -41,6 +44,14 @@ def _list_task_extras(task_dir: Path) -> list[Path]:
     return sorted(
         p for p in task_dir.iterdir()
         if p.name != "description.md" and not _TASK_DIR_PREFIX.match(p.name)
+    )
+
+
+def _list_context_extras(ctx_dir: Path) -> list[Path]:
+    """Return items in ctx_dir that are not description.md or child context dirs."""
+    return sorted(
+        p for p in ctx_dir.iterdir()
+        if p.name != "description.md" and not _CONTEXT_DIR_PREFIX.match(p.name)
     )
 
 
@@ -191,7 +202,7 @@ class NavTree(Tree[Nav | None]):
                 node.expand()
                 first = list(node.children)[0]
                 self.app.call_after_refresh(lambda n=first: self.move_cursor(n))
-            elif isinstance(nav, (ContentNav, FileNav)) and nav.kind != "task_dir":
+            elif isinstance(nav, (ContentNav, FileNav)) and nav.kind not in ("task_dir", "context_dir"):
                 self.post_message(NavTree.EditRequested(nav))
         event.stop()
 
@@ -317,10 +328,17 @@ class NavTree(Tree[Nav | None]):
                 for n in all_nodes
                 if isinstance(n.data, ContentNav) and n.data.kind == "task" and n.is_expanded
             },
+            contexts={
+                n.data.id
+                for n in all_nodes
+                if isinstance(n.data, ContentNav) and n.data.kind == "context" and n.is_expanded
+            },
             dirs={
                 str(n.data.path)
                 for n in all_nodes
-                if isinstance(n.data, FileNav) and n.data.kind == "task_dir" and n.is_expanded
+                if isinstance(n.data, FileNav)
+                and n.data.kind in ("task_dir", "context_dir")
+                and n.is_expanded
             },
         )
 
@@ -407,6 +425,56 @@ class NavTree(Tree[Nav | None]):
             ms_ids_for_tasks,
         )
 
+    def _add_contexts_section(
+        self,
+        expanded: set[str],
+        state: ProjectState,
+        expanded_contexts: set[str],
+        expanded_dirs: set[str],
+        context_dirs: dict[str, Path],
+    ) -> None:
+        has_top_level = any(c for c in state.contexts if c.parent is None)
+        ctx_expand = "contexts" in expanded and has_top_level
+        ctx_node = self.root.add(
+            "○  Context",
+            data=StructuralNav("section", "contexts"),
+            expand=ctx_expand,
+        )
+        self._add_context_nodes(
+            ctx_node, state.contexts, None, expanded_contexts, context_dirs, expanded_dirs,
+        )
+
+    def _add_context_nodes(
+        self,
+        parent_node: TreeNode[Nav | None],
+        all_contexts: list[Context],
+        parent_id: str | None,
+        expanded_contexts: set[str],
+        context_dirs: dict[str, Path],
+        expanded_dirs: set[str],
+    ) -> None:
+        """Recursively add context nodes to the tree, attaching loose files as extras."""
+        children = [c for c in all_contexts if c.parent == parent_id]
+        for c in children:
+            has_sub = any(sub.parent == c.id for sub in all_contexts)
+            label: Text | str = truncate_label(f"• {c.title}")
+            if has_sub:
+                rich_label = Text(label)
+                rich_label.append(" ·", style="bold #f0883e")
+                label = rich_label
+            ctx_dir = context_dirs.get(c.id)
+            extra = _list_context_extras(ctx_dir) if ctx_dir else []
+            nav = ContentNav("context", c.id, "contexts")
+            if has_sub or extra:
+                branch = parent_node.add(label, data=nav, expand=c.id in expanded_contexts)
+                self._add_context_nodes(
+                    branch, all_contexts, c.id, expanded_contexts, context_dirs, expanded_dirs,
+                )
+                for p in extra:
+                    self._add_path_node(branch, p, expanded_dirs, kind_prefix="context")
+            else:
+                parent_node.add_leaf(label, data=nav)
+
     def _build_workspaces(
         self,
         state: ProjectState,
@@ -440,6 +508,7 @@ class NavTree(Tree[Nav | None]):
         milestone_filters: set[str] | None = None,
         task_filters: set[str] | None = None,
         task_dirs: dict[str, Path] | None = None,
+        context_dirs: dict[str, Path] | None = None,
         visible_role_ids: set[str] | None = None,
         visible_milestone_ids: set[str] | None = None,
         initial_expansion: ExpansionState | None = None,
@@ -449,14 +518,14 @@ class NavTree(Tree[Nav | None]):
         Pass pre-computed *visible_role_ids* and *visible_milestone_ids* from
         StateManager so filtering logic lives in one place.
 
-        On the first call (session restore), pass *initial_expansion* as
-        ``(sections, tasks, dirs)`` to seed the expansion state instead of
-        reading the (empty) tree.
+        On the first call (session restore), pass *initial_expansion* to seed
+        the expansion state instead of reading the (empty) tree.
         """
         role_filters = role_filters or set()
         milestone_filters = milestone_filters or set()
         task_filters = task_filters or set()
         task_dirs = task_dirs or {}
+        context_dirs = context_dirs or {}
         visible_role_ids = visible_role_ids or set()
         visible_milestone_ids = visible_milestone_ids or set()
 
@@ -489,11 +558,9 @@ class NavTree(Tree[Nav | None]):
         # ── User group ────────────────────────────────────────────
         _header("User")
         _sep()
-        docs = self.root.add(
-            "○  Context", data=StructuralNav("section", "contexts"), expand="contexts" in expansion.sections
+        self._add_contexts_section(
+            expansion.sections, state, expansion.contexts, expansion.dirs, context_dirs,
         )
-        for d in state.contexts:
-            docs.add_leaf(truncate_label(f"• {d.title}"), data=ContentNav("context", d.id, "contexts"))
         notes = self.root.add(
             "○  Notes", data=StructuralNav("section", "notes"), expand="notes" in expansion.sections
         )
@@ -533,6 +600,8 @@ class NavTree(Tree[Nav | None]):
                 order.setdefault((nav.kind, nav.section), []).append(nav.id)
             elif isinstance(nav, FileNav) and nav.kind in ("task_file", "task_dir"):
                 order.setdefault(("task_extras", "tasks"), []).append(str(nav.path))
+            elif isinstance(nav, FileNav) and nav.kind in ("context_file", "context_dir"):
+                order.setdefault(("context_extras", "contexts"), []).append(str(nav.path))
         return order
 
     def _first_navigable_node(self) -> TreeNode[Nav | None] | None:
@@ -543,12 +612,18 @@ class NavTree(Tree[Nav | None]):
         return None
 
     def _find_file_neighbor_node(self, nav: FileNav) -> TreeNode[Nav | None] | None:
-        """Return the nearest surviving task-extra node using the previous mixed order."""
-        previous_paths = self._previous_visible_order.get(("task_extras", "tasks"), [])
+        """Return the nearest surviving file-extra node using the previous mixed order."""
+        if nav.kind in ("context_file", "context_dir"):
+            group_key = ("context_extras", "contexts")
+            sibling_kinds: tuple[FileKind, ...] = ("context_file", "context_dir")
+        else:
+            group_key = ("task_extras", "tasks")
+            sibling_kinds = ("task_file", "task_dir")
+        previous_paths = self._previous_visible_order.get(group_key, [])
         surviving: list[tuple[TreeNode[Nav | None], FileNav]] = [
             (node, node.data)
             for node in self._visible_nodes()
-            if isinstance(node.data, FileNav) and node.data.kind in ("task_file", "task_dir")
+            if isinstance(node.data, FileNav) and node.data.kind in sibling_kinds
         ]
         surviving_paths = [str(fn.path) for _, fn in surviving]
         fallback_path = choose_file_neighbor(str(nav.path), previous_paths, surviving_paths)
@@ -573,7 +648,9 @@ class NavTree(Tree[Nav | None]):
             if fallback_nav is not None:
                 target = self._find_node(fallback_nav)
 
-        if target is None and isinstance(nav, FileNav) and nav.kind in ("task_file", "task_dir"):
+        if target is None and isinstance(nav, FileNav) and nav.kind in (
+            "task_file", "task_dir", "context_file", "context_dir",
+        ):
             target = self._find_file_neighbor_node(nav)
 
         if target is None:
@@ -581,6 +658,8 @@ class NavTree(Tree[Nav | None]):
                 target = self._find_section_node(nav.section)
             elif isinstance(nav, FileNav) and nav.kind in ("task_file", "task_dir"):
                 target = self._find_section_node("tasks")
+            elif isinstance(nav, FileNav) and nav.kind in ("context_file", "context_dir"):
+                target = self._find_section_node("contexts")
 
         return target or self._first_navigable_node()
 
@@ -648,21 +727,34 @@ class NavTree(Tree[Nav | None]):
             result.extend(self.iter_all_nodes(child))
         return result
 
-    def _add_path_node(self, parent_node: TreeNode[Nav | None], path: Path, expanded_dirs: set[str]) -> None:
-        """Recursively add a filesystem file or directory node under *parent_node*."""
+    def _add_path_node(
+        self,
+        parent_node: TreeNode[Nav | None],
+        path: Path,
+        expanded_dirs: set[str],
+        kind_prefix: Literal["task", "context"] = "task",
+    ) -> None:
+        """Recursively add a filesystem file or directory node under *parent_node*.
+
+        *kind_prefix* controls the FileNav kinds used: "task" → task_file/task_dir,
+        "context" → context_file/context_dir. Keeps attachment-drop (task-only)
+        cleanly separated from context nav.
+        """
+        file_kind: FileKind = "task_file" if kind_prefix == "task" else "context_file"
+        dir_kind: FileKind = "task_dir" if kind_prefix == "task" else "context_dir"
         icon = _file_icon(path) if path.is_file() else DIR_ICON
         label = truncate_label(f"{icon}  {path.name}")
         if path.is_dir():
             children = sorted(path.iterdir())
             if children:
                 expanded = str(path) in expanded_dirs
-                node = parent_node.add(label, data=FileNav("task_dir", path), expand=expanded)
+                node = parent_node.add(label, data=FileNav(dir_kind, path), expand=expanded)
                 for child in children:
-                    self._add_path_node(node, child, expanded_dirs)
+                    self._add_path_node(node, child, expanded_dirs, kind_prefix)
             else:
-                parent_node.add_leaf(label, data=FileNav("task_dir", path))
+                parent_node.add_leaf(label, data=FileNav(dir_kind, path))
         else:
-            parent_node.add_leaf(label, data=FileNav("task_file", path))
+            parent_node.add_leaf(label, data=FileNav(file_kind, path))
 
     def _add_task_nodes(
         self,

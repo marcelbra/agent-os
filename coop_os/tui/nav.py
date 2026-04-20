@@ -15,7 +15,7 @@ def truncate_label(s: str) -> str:
 
 
 ContentKind = Literal["role", "milestone", "task", "note", "context", "skill"]
-FileKind = Literal["agent", "task_file", "task_dir"]
+FileKind = Literal["agent", "task_file", "task_dir", "context_file", "context_dir"]
 StructKind = Literal["section", "root", "header", "sep"]
 
 
@@ -53,7 +53,7 @@ def nav_from_parts(kind: str, id_or_path: str, section: str) -> Nav:
     """Reconstruct a Nav from its serialized string parts (used for session restore)."""
     if kind in ("role", "milestone", "task", "note", "context", "skill"):
         return ContentNav(kind, id_or_path, section)
-    if kind in ("agent", "task_file", "task_dir"):
+    if kind in ("agent", "task_file", "task_dir", "context_file", "context_dir"):
         return FileNav(kind, Path(id_or_path))
     if kind in ("section", "root", "header", "sep"):
         return StructuralNav(kind, section)

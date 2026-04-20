@@ -39,7 +39,7 @@ All files in `coop_os/workspace/` are Markdown with YAML frontmatter. A `PostToo
 - **Role** — values, principles, long-term direction. *Not* operational state, blockers, time budgets, or weekly cadence.
 - **Milestone** — a discrete outcome with a deadline. *Not* open-ended maintenance or recurring work.
 - **Task** — actionable, granular work that moves a specific milestone forward.
-- **Recurring habits** — weekly/monthly loops; today a freeform file (`context-3-Recurring habits.md`), later a typed `Habit` entity linking each habit to both a role *and* a milestone. Not milestones themselves.
+- **Recurring habits** — weekly/monthly loops; today a freeform context (`context-3-Recurring habits/description.md`), later a typed `Habit` entity linking each habit to both a role *and* a milestone. Not milestones themselves.
 - **Note** — raw capture, pre-scan. Meeting notes, ad-hoc thoughts, triage material.
 - **Context** — background the agent uses to stay grounded. Today overloaded to also hold user documents (CV, brainstorms) — proper Document type tracked in `context-2` as a feature.
 
@@ -86,13 +86,15 @@ Body = description.
 
 Body = note content.
 
-### Context — `workspace/../user/context/context-{n}-{title}.md`
+### Context — `workspace/../user/context/context-{n}-{title}/description.md`
 | Field | Type | Notes |
 |-------|------|-------|
 | `id` | str | `context-{n}` |
 | `title` | str | |
+| `parent` | str? | Human-readable parent id; directory nesting is authoritative on load |
+| `attachments` | list? | Each `{filename, added_at}`; sibling files in the context folder |
 
-Body = context content.
+Body = context description. Each context is a directory: nested sub-contexts live as child directories, and arbitrary files (scripts, PDFs, images) sit as siblings to `description.md`.
 
 ---
 

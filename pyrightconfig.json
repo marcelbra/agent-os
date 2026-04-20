@@ -1,6 +1,7 @@
 {
   "pythonVersion": "3.13",
   "include": ["coop_os"],
+  "exclude": ["coop_os/user"],
   "reportUnknownParameterType": "none",
   "reportMissingParameterType": "none",
   "reportUnknownArgumentType": "none",

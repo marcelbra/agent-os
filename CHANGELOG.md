@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+- Context entity is now folder-structured like Task: each context is a `context-{id}-{slug}/description.md` directory, sub-contexts nest, and loose non-markdown files (scripts, PDFs, images) appear as first-class nav nodes. `Context.content` renamed to `Context.description` for consistency with Task.
+
 ## [0.6.1] - 2026-04-12
 
 ### Fixed

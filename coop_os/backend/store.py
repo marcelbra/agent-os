@@ -115,6 +115,44 @@ def _collect_task_ids(search_dir: Path) -> list[str]:
     return ids
 
 
+_CONTEXT_DIR_RE = re.compile(r"^context-\d+-")
+
+
+def _is_context_dir(path: Path) -> bool:
+    return path.is_dir() and bool(_CONTEXT_DIR_RE.match(path.name))
+
+
+def _find_context_dir(search_dir: Path, context_id: str) -> Path | None:
+    """Recursively find a context directory by ID under *search_dir*."""
+    if not search_dir.exists():
+        return None
+    for d in search_dir.iterdir():
+        if not _is_context_dir(d):
+            continue
+        desc = d / "description.md"
+        if desc.exists() and _fm_id(desc) == context_id:
+            return d
+        found = _find_context_dir(d, context_id)
+        if found:
+            return found
+    return None
+
+
+def _collect_context_ids(search_dir: Path) -> list[str]:
+    """Recursively collect all context IDs under *search_dir*."""
+    ids: list[str] = []
+    if not search_dir.exists():
+        return ids
+    for d in search_dir.iterdir():
+        if not _is_context_dir(d):
+            continue
+        desc = d / "description.md"
+        if desc.exists():
+            ids.append(_fm_id(desc))
+        ids.extend(_collect_context_ids(d))
+    return ids
+
+
 # ── Base store for flat-file entities ─────────────────────────────────────────
 
 
@@ -379,22 +417,110 @@ class NoteStore(FlatFileStore[Note]):
         return item.title
 
 
-class ContextStore(FlatFileStore[Context]):
+class ContextStore:
     def __init__(self, root: Path) -> None:
-        super().__init__(root, "user/context", "context")
+        self.root = root
+        self._dir = root / "coop_os" / "user" / "context"
 
-    def _parse(self, meta: dict[str, Any], content: str) -> Context:
-        return Context(
-            id=str(meta["id"]),
-            title=str(meta["title"]),
-            content=content,
-        )
+    def _load_from_dir(
+        self,
+        search_dir: Path,
+        parent_id: str | None,
+        contexts: list[Context],
+        errors: list[ParseError],
+    ) -> None:
+        """Recursively load contexts from a directory tree, appending to contexts and errors.
 
-    def _to_meta_content(self, item: Context) -> tuple[dict[str, Any], str]:
-        return {"id": item.id, "title": item.title}, item.content
+        Mirrors TaskStore._load_from_dir: the 'parent:' frontmatter field is
+        intentionally ignored — directory nesting is the authoritative parent-child
+        relationship.
+        """
+        for ctx_dir in sorted(
+            (d for d in search_dir.iterdir() if _is_context_dir(d)), key=_id_sort_key
+        ):
+            desc_path = ctx_dir / "description.md"
+            if not desc_path.exists():
+                errors.append(
+                    ParseError(file=f"context/.../{ctx_dir.name}", error="Missing description.md")
+                )
+                continue
+            try:
+                meta, content = _read_fm(desc_path)
+                contexts.append(Context(
+                    id=str(meta["id"]),
+                    title=str(meta["title"]),
+                    parent=parent_id,
+                    description=content,
+                    attachments=[
+                        Attachment(**attachment)
+                        for attachment in meta.get("attachments", [])
+                        if (ctx_dir / attachment["filename"]).exists()
+                    ],
+                ))
+                self._load_from_dir(ctx_dir, str(meta["id"]), contexts, errors)
+            except Exception as e:
+                errors.append(
+                    ParseError(file=f"context/.../{ctx_dir.name}/description.md", error=str(e))
+                )
 
-    def _file_slug(self, item: Context) -> str:
-        return item.title
+    def load_all(self) -> tuple[list[Context], list[ParseError]]:
+        contexts: list[Context] = []
+        errors: list[ParseError] = []
+        if not self._dir.exists():
+            return contexts, errors
+        self._load_from_dir(self._dir, None, contexts, errors)
+        return contexts, errors
+
+    def next_id(self) -> str:
+        return _next_id(_collect_context_ids(self._dir), "context")
+
+    def save(self, context: Context) -> None:
+        existing_dir = _find_context_dir(self._dir, context.id)
+        if existing_dir:
+            ctx_dir = existing_dir
+        elif context.parent:
+            parent_dir = _find_context_dir(self._dir, context.parent)
+            base = parent_dir if parent_dir else self._dir
+            ctx_dir = base / f"{context.id}-{sanitize_filename(context.title)}"
+        else:
+            ctx_dir = self._dir / f"{context.id}-{sanitize_filename(context.title)}"
+        ctx_dir.mkdir(parents=True, exist_ok=True)
+        meta: dict[str, Any] = {"id": context.id, "title": context.title}
+        if context.parent:
+            meta["parent"] = context.parent
+        if context.attachments:
+            meta["attachments"] = [attachment.model_dump() for attachment in context.attachments]
+        _write_fm(ctx_dir / "description.md", meta, context.description)
+
+    def delete(self, context_id: str) -> bool:
+        ctx_dir = _find_context_dir(self._dir, context_id)
+        if ctx_dir:
+            shutil.rmtree(ctx_dir)
+            return True
+        return False
+
+    def find_path(self, context_id: str) -> Path | None:
+        ctx_dir = _find_context_dir(self._dir, context_id)
+        return ctx_dir / "description.md" if ctx_dir else None
+
+    def all_context_dirs(self) -> dict[str, Path]:
+        """Return a mapping of context_id -> context_dir_path for every known context."""
+        result: dict[str, Path] = {}
+        self._collect_dirs(self._dir, result)
+        return result
+
+    def _collect_dirs(self, search_dir: Path, result: dict[str, Path]) -> None:
+        """Recursively populate result dict with context_id → context_dir mappings."""
+        if not search_dir.exists():
+            return
+        for subdir in search_dir.iterdir():
+            if _is_context_dir(subdir):
+                desc = subdir / "description.md"
+                if desc.exists():
+                    ctx_id = _fm_id(desc)
+                    if ctx_id:
+                        result[ctx_id] = subdir
+                self._collect_dirs(subdir, result)
 
 
 class SkillStore:

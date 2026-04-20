@@ -72,7 +72,9 @@ class Note(BaseModel):
 class Context(BaseModel):
     id: str
     title: str
-    content: str = ""
+    parent: str | None = None
+    description: str = ""
+    attachments: list[Attachment] = []
 
 
 class Skill(BaseModel):
